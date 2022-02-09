@@ -1,0 +1,12 @@
+{
+  "_template": "gh:cjolowicz/cookiecutter-hypermodern-python",
+  "author": "Daniel Thonon",
+  "development_status": "Development Status :: 2 - Pre-Alpha",
+  "email": "d.thonon9@gmail.com",
+  "friendly_name": "Mte_Consult",
+  "github_user": "dthonon",
+  "license": "GPL-3.0",
+  "package_name": "mte_consult",
+  "project_name": "mte_consult",
+  "version": "0.0.0"
+}
