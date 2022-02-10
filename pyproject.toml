@@ -21,7 +21,7 @@ click = "^8.0.1"
 Scrapy = "^2.5.1"
 
 [tool.poetry.dev-dependencies]
-pytest = "^6.2.5"
+pytest = "^7.0.0"
 coverage = {extras = ["toml"], version = "^6.1"}
 safety = "^1.10.3"
 mypy = "^0.910"
