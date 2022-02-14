@@ -5,7 +5,8 @@
 from itemadapter import is_item
 from itemadapter import ItemAdapter
 from scrapy import signals
-# useful for handling different item types with a single interface
+
+# Useful for handling different item types with a single interface
 
 
 class MteSpiderMiddleware:
