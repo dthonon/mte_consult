@@ -33,6 +33,7 @@ repos:
         language: system
         types: [python]
         require_serial: true
+        exclude: ^scrapper/
       - id: pyupgrade
         name: pyupgrade
         description: Automatically upgrade syntax for newer versions.
