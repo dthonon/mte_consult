@@ -8,14 +8,17 @@ class MteCrawlerSpider(scrapy.Spider):
     allowed_domains = ["consultations-publiques.developpement-durable.gouv.fr"]
 
     ## Modifier le nom de la consultation ci-dessous
-    _start_url = "http://www.consultations-publiques.developpement-durable.gouv.fr/spip.php?page=article&id_article=2569"
+    _start_url = (
+        "http://www.consultations-publiques.developpement-durable.gouv.fr/"
+        + "projet-de-decret-pris-en-application-de-l-article-a2569.html"
+    )
     # "projet-de-decret-pris-en-application-de-l-article-a2569"
     ## Modifier le nombre de commentaires ci-dessous
-    _max_comments = 4087
+    _max_comments = 100
 
     def start_requests(self):
         ## Création de la liste des pages
-        self.logger.info("Téléchargement de la première page")
+        self.logger.info("Création de la liste des pages à télécharger")
         urls = [
             self._start_url,
         ]
@@ -23,7 +26,6 @@ class MteCrawlerSpider(scrapy.Spider):
             urls.append(
                 self._start_url + "&debut_forums=" + str(page) + "#pagination_forums"
             )
-        print(urls[2])
         for url in urls:
             yield scrapy.Request(url=url, callback=self.parse)
 
