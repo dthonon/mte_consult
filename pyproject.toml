@@ -24,7 +24,7 @@ Scrapy = "^2.6.1"
 pytest = "^7.0.1"
 coverage = {extras = ["toml"], version = "^6.3"}
 safety = "^1.10.3"
-mypy = "^0.910"
+mypy = "^0.941"
 typeguard = "^2.13.2"
 xdoctest = {extras = ["colors"], version = "^0.15.10"}
 sphinx = "^4.3.0"
