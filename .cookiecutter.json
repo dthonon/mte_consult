@@ -1,6 +1,7 @@
 {
-  "_template": "gh:cjolowicz/cookiecutter-hypermodern-python",
+  "_template": "https://github.com/cjolowicz/cookiecutter-hypermodern-python",
   "author": "Daniel Thonon",
+  "copyright_year": "2022",
   "development_status": "Development Status :: 2 - Pre-Alpha",
   "email": "d.thonon9@gmail.com",
   "friendly_name": "Mte_Consult",

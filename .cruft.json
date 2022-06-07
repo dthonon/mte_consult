@@ -1,6 +1,6 @@
 {
   "template": "https://github.com/cjolowicz/cookiecutter-hypermodern-python",
-  "commit": "59f944c84aca86187a221c5eb23cec6456349300",
+  "commit": "6bcfea64890c148c9c834cc82820f433935b6701",
   "context": {
     "cookiecutter": {
       "project_name": "mte_consult",
@@ -16,5 +16,6 @@
       "_template": "https://github.com/cjolowicz/cookiecutter-hypermodern-python"
     }
   },
-  "directory": null
+  "directory": null,
+  "checkout": null
 }

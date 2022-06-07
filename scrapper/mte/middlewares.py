@@ -2,9 +2,10 @@
 #
 # See documentation in:
 # https://docs.scrapy.org/en/latest/topics/spider-middleware.html
-from itemadapter import is_item
 from itemadapter import ItemAdapter
+from itemadapter import is_item
 from scrapy import signals
+
 
 # Useful for handling different item types with a single interface
 
