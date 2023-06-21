@@ -21,7 +21,7 @@ Vous pouvez cloner _Mte_Consult_ depuis [github].
 ## Usage
 
 Il faut d'abord modifier la consultation dans `scrapper/mte/spiders/mte_crawler.py`.
-Et ensuite lancer la commande 
+Et ensuite lancer la commande
 `scrapy crawl mte_crawler -o ../data/raw/consultation_xxx.csv:csv`
 
 Please see the [Command-line Reference] for details.

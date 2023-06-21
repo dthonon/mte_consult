@@ -23,9 +23,7 @@ class MteCrawlerSpider(scrapy.Spider):
             self._start_url,
         ]
         for page in range(20, self._max_comments, 20):
-            urls.append(
-                self._start_url + "&debut_forums=" + str(page)
-            )
+            urls.append(self._start_url + "&debut_forums=" + str(page))
         for url in urls:
             yield scrapy.Request(url=url, callback=self.parse)
 

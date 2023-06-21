@@ -1,12 +1,13 @@
 """Command-line interface."""
-import click
 import csv
 import hashlib
 import logging
-import os
-from pathlib import Path
 
+import click
 import pandas as pd
+
+
+data_dir = "."
 
 
 @click.version_option()
@@ -26,7 +27,8 @@ def main(consultation, start_comment, end_comment) -> None:
 
 
 @main.command()
-def preprocess(consultation):
+def preprocess(consultation) -> None:
+    """Prepare data."""
     click.echo("Traitement préalable des données")
     """Prétraitement du fichier brut contenant les commentaires.
     """
@@ -35,9 +37,9 @@ def preprocess(consultation):
 
     _logger.info("Prétraitement de %s", consultation)
     csv_file = data_dir + "/raw/" + consultation + ".csv"
-    _logger.debug(_("Lecture %s"), csv_file)
+    _logger.debug("Lecture %s", csv_file)
     responses = pd.read_csv(csv_file, header=0, quoting=csv.QUOTE_ALL, nrows=1000000)
-    _logger.info(_("Nombre de commentaires bruts : %d"), len(responses))
+    _logger.info("Nombre de commentaires bruts : %d", len(responses))
 
     # Ajout hash-key pour assurer la traçabilité en cours de traitement
     responses["uid"] = responses.sujet.apply(
@@ -56,16 +58,17 @@ def preprocess(consultation):
     # Suppression des ligne dupliquées
     # responses.drop_duplicates(subset=["nom", "titre"], inplace=True)
     responses = responses.drop_duplicates(subset=["nom", "texte"])
-    _logger.info(_("Commentaires restants après déduplication : %d"), len(responses))
+    _logger.info("Commentaires restants après déduplication : %d", len(responses))
 
     print(responses.head(10))
     csv_file = data_dir + "/preprocessed/" + consultation + ".csv"
-    _logger.debug(_("Ecriture dans %s"), csv_file)
+    _logger.debug("Ecriture dans %s", csv_file)
     responses.to_csv(csv_file, header=0, quoting=csv.QUOTE_ALL)
 
 
 @main.command()
-def process():
+def process() -> None:
+    """Process data."""
     click.echo("Traitement principal des données")
 
 
