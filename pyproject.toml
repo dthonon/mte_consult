@@ -20,6 +20,7 @@ python = "^3.10"
 click = ">=8.0.1"
 Scrapy = ">2.8.0"
 pandas = "^2.0.2"
+pandas-stubs = "^2.0.2.230605"
 
 [tool.poetry.dev-dependencies]
 Pygments = ">=2.10.0"

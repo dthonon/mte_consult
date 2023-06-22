@@ -21,13 +21,13 @@ data_dir = "."
     help="Numéro de dernier commentaire à analyser, 0 : pas de limite",
 )
 @click.argument("consultation")
-def main(consultation, start_comment, end_comment) -> None:
+def main(consultation: str, start_comment: int, end_comment: int) -> None:
     """Mte_Consult."""
     pass
 
 
 @main.command()
-def preprocess(consultation) -> None:
+def preprocess(consultation: str) -> None:
     """Prepare data."""
     click.echo("Traitement préalable des données")
     """Prétraitement du fichier brut contenant les commentaires.
