@@ -64,20 +64,19 @@ def preprocess(ctx: click.Context) -> None:
     )
 
     # Découpe du sujet en éléments
-    responses[["titre", "nom", "date", "heure"]] = responses.sujet.str.extract(
-        "(.*), par  (.*) ,, le (.*) à (.*)", expand=True
+    responses[["titre", "date", "heure"]] = responses.sujet.str.extract(
+        "(.*), le (.*) à (.*)", expand=True
     )
     responses = responses.drop(columns=["sujet"])
     responses = responses[
-        ["titre", "nom", "date", "heure", "texte", "uid"]
-    ].sort_values(by="nom", ignore_index=True)
+        ["titre", "date", "heure", "texte", "uid"]
+    ].sort_values(by="date", ignore_index=True)
 
     # Suppression des ligne dupliquées
-    # responses.drop_duplicates(subset=["nom", "titre"], inplace=True)
-    responses = responses.drop_duplicates(subset=["nom", "texte"])
+    responses = responses.drop_duplicates(subset=["titre", "texte"])
     logging.info("Commentaires restants après déduplication : %d", len(responses))
 
-    print(responses.head(10))
+    # print(responses.head(10))
     csv_file = data_dir + "/preprocessed/" + consultation + ".csv"
     logging.debug("Ecriture dans %s", csv_file)
     responses.to_csv(csv_file, header=False, quoting=csv.QUOTE_ALL)
