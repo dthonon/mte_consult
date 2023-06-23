@@ -2,13 +2,54 @@
 import csv
 import hashlib
 import logging
+import re
+import unicodedata
+from pathlib import Path
+from typing import Any
 
 import click
+import hunspell
 import pandas as pd
+import textacy
+from textacy import preprocessing
+
 
 logging.basicConfig(
     level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
 )
+
+
+def _clean_unicode(self, ch):
+    """Remove unprintable character
+    You can find a full list of categories here:
+    http://www.fileformat.info/info/unicode/category/index.htm"""
+    letters = ("LC", "Ll", "Lm", "Lo", "Lt", "Lu")
+    numbers = ("Nd", "Nl", "No")
+    marks = ("Mc", "Me", "Mn")
+    punctuation = ("Pc", "Pd", "Pe", "Pf", "Pi", "Po", "Ps")
+    symbol = ("Sc", "Sk", "Sm", "So")
+    space = ("Zl", "Zp", "Zs")
+
+    allowed_categories = letters + numbers + marks + punctuation + symbol
+    if unicodedata.category(ch) in space:
+        return " "
+    elif unicodedata.category(ch) in allowed_categories:
+        return ch
+    else:
+        return " "
+
+
+def _remove_tags(self, text):
+    """Cleans a string :
+    - removing HTML tags
+    - removing shortcuts, such as =>...
+    - removing non printable text, based on a whitelist of printable unicode
+    """
+    TAG_RE = re.compile(r"<[^>]+>|[=\-,]?>|\+|\/\/")
+    text = TAG_RE.sub("", text)
+
+    text = "".join([self._clean_unicode(c) for c in text])
+    return text
 
 
 @click.version_option()
@@ -50,10 +91,10 @@ def main(
 @click.pass_context
 def preprocess(ctx: click.Context) -> None:
     """Prétraitement du fichier brut contenant les commentaires."""
-    consultation = ctx.obj['CONSULTATION']
+    consultation = ctx.obj["CONSULTATION"]
     data_dir = ctx.obj["DATA_DIRECTORY"]
     logging.info(f"Prétraitement de {consultation} dans {data_dir}")
-    csv_file = data_dir + "/raw/" + consultation + ".csv"
+    csv_file = Path(data_dir + "/raw/" + consultation + ".csv")
     logging.debug("Lecture %s", csv_file)
     responses = pd.read_csv(csv_file, header=0, quoting=csv.QUOTE_ALL, nrows=1000000)
     logging.info("Nombre de commentaires bruts : %d", len(responses))
@@ -68,24 +109,115 @@ def preprocess(ctx: click.Context) -> None:
         "(.*), le (.*) à (.*)", expand=True
     )
     responses = responses.drop(columns=["sujet"])
-    responses = responses[
-        ["titre", "date", "heure", "texte", "uid"]
-    ].sort_values(by="date", ignore_index=True)
+    responses = responses[["titre", "date", "heure", "texte", "uid"]].sort_values(
+        by="date", ignore_index=True
+    )
 
     # Suppression des ligne dupliquées
     responses = responses.drop_duplicates(subset=["titre", "texte"])
     logging.info("Commentaires restants après déduplication : %d", len(responses))
 
-    # print(responses.head(10))
-    csv_file = data_dir + "/preprocessed/" + consultation + ".csv"
-    logging.debug("Ecriture dans %s", csv_file)
-    responses.to_csv(csv_file, header=False, quoting=csv.QUOTE_ALL)
+    # Fusion en une colonne pour traitement du texte
+    responses["raw_text"] = responses["titre"] + ". " + responses["texte"]
+    responses["raw_text"].fillna(value="?", inplace=True)
+    responses = responses.drop(columns=["texte"])
 
+    # Nettoyage du texte brut
+    preproc = preprocessing.make_pipeline(
+        preprocessing.normalize.whitespace,
+        preprocessing.replace.urls,
+        preprocessing.replace.numbers,
+        preprocessing.replace.emojis,
+        preprocessing.replace.currency_symbols,
+        preprocessing.remove.html_tags,
+    )
+    responses["raw_text"] = responses["raw_text"].apply(preproc)
+
+    # Ecriture du fichier résultant
+    csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
+    logging.debug("Ecriture dans %s", csv_file)
+    responses.to_csv(csv_file, header=True, quoting=csv.QUOTE_ALL)
+
+
+def _spell_correction(doc: str, spell: Any) -> str:
+    """Spell correction of misspelled words."""
+    global nb_words
+    nb_words += 1
+    if (nb_words % 100) == 0:
+        logging.info(f"Spell checking word number {nb_words}")
+    text = ""
+    for d in doc:
+        word = d.text
+        # Spell check meaningfull words only
+        if d.is_space:
+            pass  # Nothing to check
+        elif d.is_stop or d.is_punct or spell.spell(word):
+            text += d.text_with_ws
+        else:
+            sp = spell.suggest(word)
+            if len(sp) > 0:
+                rep = sp[0]
+                print(word + " => " + rep)
+                text += rep + d.whitespace_
+            else:
+                logging.warning(f"Unable to correct {word}")
+                text += d.text_with_ws
+    return text
+
+def _fr_nlp(self):
+    # Prepare NLP processing
+    logging.info(f"Préparation du traitement NLP")
+    # spacy.prefer_gpu()
+    _nlp = textacy.load_spacy_lang(
+        "fr_core_news_sm", disable=("tagger", "parser", "ner")
+    )
+    logging.info(f"NLP pipeline: {_nlp.pipe_names}")
+    # Adjust stopwords for this specific topic
+    _nlp.Defaults.stop_words |= {"y", "france", "italie"}
+    _nlp.Defaults.stop_words -= {"contre"}
+    return _nlp
 
 @main.command()
-def process() -> None:
+@click.pass_context
+def process(ctx: click.Context) -> None:
     """Traitement principal des données."""
-    click.echo("Traitement principal des données")
+    consultation = ctx.obj["CONSULTATION"]
+    data_dir = ctx.obj["DATA_DIRECTORY"]
+    logging.info(f"Traitement principal de {consultation} dans {data_dir}")
+    csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
+    logging.debug("Lecture %s", csv_file)
+    responses = pd.read_csv(csv_file, header=0, quoting=csv.QUOTE_ALL, nrows=1000000)
+    logging.info("Nombre de commentaires à traiter : %d", len(responses))
+
+    # Read classification data, if it exists
+    csv_file = Path(data_dir + "/external/" + consultation + ".csv")
+    if csv_file.exists():
+        logging.info(f"Chargement des classifications {csv_file}")
+        classif = pd.read_csv(csv_file, header=0, quoting=csv.QUOTE_ALL, nrows=1000000)
+        logging.info(f"Lu {len(classif)} données de classification")
+        classif = classif.drop(columns=["raw_text"])
+        responses = responses.merge(classif, on="uid")
+    else:
+        logging.info(f"Pas de classification found dans {csv_file}")
+        classif = None
+
+    # Correction orthographique
+    logging.info(f"Correction orthographique des commentaires")
+    spell = hunspell.HunSpell(
+        "/usr/share/hunspell/fr_FR.dic", "/usr/share/hunspell/fr_FR.aff"
+    )
+    added_words = Path(data_dir + "/external/" + "mtes.txt")
+    spell.add_dic(added_words)
+    # spell.remove("abatage")
+    responses["checked_text"] = responses["raw_text"].apply(
+        lambda d: _spell_correction(_fr_nlp(d), spell))
+    # Save processed data to csv file
+    csv_file = Path(data_dir + "/interim/" + consultation + ".csv")
+    logging.info(
+        f"Storing {len(responses)} rows of processed data to {csv_file}"
+    )
+    responses.to_csv(csv_file, index=False, quoting=csv.QUOTE_ALL)
+
 
 
 if __name__ == "__main__":

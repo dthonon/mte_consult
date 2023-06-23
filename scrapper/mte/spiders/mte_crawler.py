@@ -14,7 +14,7 @@ class MteCrawlerSpider(scrapy.Spider):
     )
 
     ## Modifier le nombre de commentaires ci-dessous
-    _max_comments = 1000
+    _max_comments = 100
 
     def start_requests(self):
         ## Création de la liste des pages
@@ -24,7 +24,8 @@ class MteCrawlerSpider(scrapy.Spider):
         ]
         for page in range(20, self._max_comments, 20):
             urls.append(self._start_url + "&debut_forums=" + str(page))
-        for url in urls:
+        # Parcours des commentaires depuis la fin pour minimiser les doublons, au détriment des pertes
+        for url in reversed(urls):
             yield scrapy.Request(url=url, callback=self.parse)
 
     def parse(self, response):
