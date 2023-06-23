@@ -3,6 +3,7 @@ import csv
 import hashlib
 import logging
 import re
+
 # import unicodedata
 from pathlib import Path
 from typing import Any
@@ -88,8 +89,8 @@ def main(
 
     ctx.obj["CONSULTATION"] = consultation
     ctx.obj["DATA_DIRECTORY"] = data_directory
-    ctx.obj["START_COMMENT"] = start_comment if start_comment>1 else None
-    ctx.obj["END_COMMENT"] = end_comment if end_comment>0 else None
+    ctx.obj["START_COMMENT"] = start_comment if start_comment > 1 else None
+    ctx.obj["END_COMMENT"] = end_comment if end_comment > 0 else None
 
 
 @main.command()
@@ -128,16 +129,23 @@ def preprocess(ctx: click.Context) -> None:
     responses = responses.drop(columns=["texte"])
 
     # Nettoyage du texte brut
+    responses.raw_text = responses.raw_text.str.replace("[_%=/°]", " ", regex=True)
+    responses.raw_text = responses.raw_text.str.replace("+", " plus ")
+    responses.raw_text = responses.raw_text.str.replace("*", " fois ")
+    responses.raw_text = responses.raw_text.str.replace("qq", "quelque")
+    responses.raw_text = responses.raw_text.str.replace("\d\dh\d\d", "", regex=True)
     preproc = preprocessing.make_pipeline(
-        preprocessing.normalize.whitespace,
+        preprocessing.normalize.bullet_points,
+        preprocessing.normalize.hyphenated_words,
         preprocessing.replace.urls,
-        partial(preprocessing.replace.numbers, repl="NOMBRE"),
-        preprocessing.replace.emojis,
-       preprocessing.replace.emails,
-        preprocessing.replace.currency_symbols,
+        partial(preprocessing.replace.numbers, repl=" NOMBRE "),
+        partial(preprocessing.replace.emojis, repl=" "),
+        partial(preprocessing.replace.emails, repl=" "),
+        partial(preprocessing.replace.currency_symbols, repl=" Euros "),
         preprocessing.remove.html_tags,
+        preprocessing.normalize.whitespace,
     )
-    responses["raw_text"] = responses["raw_text"].apply(preproc)
+    responses.raw_text = responses["raw_text"].apply(preproc)
 
     # Ecriture du fichier résultant
     csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
@@ -196,7 +204,9 @@ def check(ctx: click.Context) -> None:
     logging.info(f"Correction orthographique des commentaires de {consultation}")
     csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
     logging.debug(f"Lecture {csv_file} depuis {start_comment} jusqu'à {end_comment}")
-    responses = pd.read_csv(csv_file, header=0, quoting=csv.QUOTE_ALL, nrows=end_comment)
+    responses = pd.read_csv(
+        csv_file, header=0, quoting=csv.QUOTE_ALL, nrows=end_comment
+    )
     logging.info("Nombre de commentaires à traiter : %d", len(responses))
 
     # Correction orthographique
@@ -226,7 +236,6 @@ def check(ctx: click.Context) -> None:
     # else:
     #     logging.info(f"Pas de classification trouvée dans {csv_file}")
     #     classif = None
-
 
 
 if __name__ == "__main__":
