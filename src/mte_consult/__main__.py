@@ -186,10 +186,10 @@ def check(ctx: click.Context) -> None:
     csv_file = Path(data_dir + "/external/" + consultation + "_cat.csv")
     if csv_file.exists():
         logging.info(f"Chargement des classifications {csv_file}")
-        classif = pd.read_csv(csv_file, header=0, quoting=csv.QUOTE_ALL, nrows=1000000)
+        classif = pd.read_csv(csv_file, header=0, quoting=csv.QUOTE_ALL)
         logging.info(f"Lu {len(classif)} données de classification")
-        classif = classif.drop(columns=["raw_text"])
-        responses = responses.merge(classif, on="sujet")
+        classif = classif.drop(columns=["checked_text"])
+        responses = responses.merge(classif, on="sujet", how="left")
     else:
         logging.info(f"Pas de classification trouvée dans {csv_file}")
         classif = None
