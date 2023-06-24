@@ -25,39 +25,6 @@ logging.basicConfig(
 )
 
 
-# def _clean_unicode(self, ch):
-#     """Remove unprintable character
-#     You can find a full list of categories here:
-#     http://www.fileformat.info/info/unicode/category/index.htm"""
-#     letters = ("LC", "Ll", "Lm", "Lo", "Lt", "Lu")
-#     numbers = ("Nd", "Nl", "No")
-#     marks = ("Mc", "Me", "Mn")
-#     punctuation = ("Pc", "Pd", "Pe", "Pf", "Pi", "Po", "Ps")
-#     symbol = ("Sc", "Sk", "Sm", "So")
-#     space = ("Zl", "Zp", "Zs")
-
-#     allowed_categories = letters + numbers + marks + punctuation + symbol
-#     if unicodedata.category(ch) in space:
-#         return " "
-#     elif unicodedata.category(ch) in allowed_categories:
-#         return ch
-#     else:
-#         return " "
-
-
-# def _remove_tags(self, text):
-#     """Cleans a string :
-#     - removing HTML tags
-#     - removing shortcuts, such as =>...
-#     - removing non printable text, based on a whitelist of printable unicode
-#     """
-#     TAG_RE = re.compile(r"<[^>]+>|[=\-,]?>|\+|\/\/")
-#     text = TAG_RE.sub("", text)
-
-#     text = "".join([self._clean_unicode(c) for c in text])
-#     return text
-
-
 @click.version_option()
 @click.group()
 @click.option(
@@ -105,17 +72,11 @@ def preprocess(ctx: click.Context) -> None:
     responses = pd.read_csv(csv_file, header=0, quoting=csv.QUOTE_ALL, nrows=1000000)
     logging.info("Nombre de commentaires bruts : %d", len(responses))
 
-    # Ajout hash-key pour assurer la traçabilité en cours de traitement
-    responses["uid"] = responses.sujet.apply(
-        lambda t: hashlib.sha224(t.encode("utf-8")).hexdigest()
-    )
-
     # Découpe du sujet en éléments
     responses[["titre", "date", "heure"]] = responses.sujet.str.extract(
         "(.*), le (.*) à (.*)", expand=True
     )
-    responses = responses.drop(columns=["sujet"])
-    responses = responses[["titre", "date", "heure", "texte", "uid"]].sort_values(
+    responses = responses[["titre", "date", "heure", "texte", "sujet"]].sort_values(
         by="date", ignore_index=True
     )
 
@@ -188,8 +149,8 @@ def _fr_nlp() -> spacy.Language:
     )
     logging.info(f"NLP pipeline: {_nlp.pipe_names}")
     # Adjust stopwords for this specific topic
-    _nlp.Defaults.stop_words |= {"y", "france", "italie"}
-    _nlp.Defaults.stop_words -= {"contre"}
+    _nlp.Defaults.stop_words |= {"y", "france", "esod"}
+    _nlp.Defaults.stop_words -= {"pour"}
     return _nlp
 
 
@@ -220,22 +181,23 @@ def check(ctx: click.Context) -> None:
     responses["checked_text"] = responses["raw_text"].apply(
         lambda d: _spell_correction(tokenizer(d), spell)
     )
+
+    # Read classification data, if it exists
+    csv_file = Path(data_dir + "/external/" + consultation + "_cat.csv")
+    if csv_file.exists():
+        logging.info(f"Chargement des classifications {csv_file}")
+        classif = pd.read_csv(csv_file, header=0, quoting=csv.QUOTE_ALL, nrows=1000000)
+        logging.info(f"Lu {len(classif)} données de classification")
+        classif = classif.drop(columns=["raw_text"])
+        responses = responses.merge(classif, on="sujet")
+    else:
+        logging.info(f"Pas de classification trouvée dans {csv_file}")
+        classif = None
+
     # Save processed data to csv file
     csv_file = Path(data_dir + "/interim/" + consultation + ".csv")
     logging.info(f"Storing {len(responses)} rows of processed data to {csv_file}")
     responses.to_csv(csv_file, index=False, quoting=csv.QUOTE_ALL)
-
-    # # Read classification data, if it exists
-    # csv_file = Path(data_dir + "/external/" + consultation + ".csv")
-    # if csv_file.exists():
-    #     logging.info(f"Chargement des classifications {csv_file}")
-    #     classif = pd.read_csv(csv_file, header=0, quoting=csv.QUOTE_ALL, nrows=1000000)
-    #     logging.info(f"Lu {len(classif)} données de classification")
-    #     classif = classif.drop(columns=["raw_text"])
-    #     responses = responses.merge(classif, on="uid")
-    # else:
-    #     logging.info(f"Pas de classification trouvée dans {csv_file}")
-    #     classif = None
 
 
 if __name__ == "__main__":
