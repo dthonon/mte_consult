@@ -1,19 +1,16 @@
 """Command-line interface."""
 import csv
-import hashlib
 import logging
-import re
+from functools import partial
 
 # import unicodedata
 from pathlib import Path
 from typing import Any
-from functools import partial
 
 import click
-import hunspell
+import hunspell  # type: ignore
 import pandas as pd
 import spacy
-import textacy
 from textacy import preprocessing
 
 
@@ -94,8 +91,8 @@ def preprocess(ctx: click.Context) -> None:
     responses.raw_text = responses.raw_text.str.replace("+", " plus ")
     responses.raw_text = responses.raw_text.str.replace("*", " fois ")
     responses.raw_text = responses.raw_text.str.replace("qq", "quelque")
-    responses.raw_text = responses.raw_text.str.replace("\d\dh\d\d", "", regex=True)
-    preproc = preprocessing.make_pipeline(
+    responses.raw_text = responses.raw_text.str.replace(r"\d\dh\d\d", "", regex=True)
+    preproc = preprocessing.pipeline.make_pipeline(
         preprocessing.normalize.bullet_points,
         preprocessing.normalize.hyphenated_words,
         preprocessing.replace.urls,
@@ -114,7 +111,7 @@ def preprocess(ctx: click.Context) -> None:
     responses.to_csv(csv_file, header=True, quoting=csv.QUOTE_ALL)
 
 
-def _spell_correction(doc: str, spell: Any) -> str:
+def _spell_correction(doc: spacy.tokenizer, spell: Any) -> str:
     """Spell correction of misspelled words."""
     global nb_words
     nb_words += 1
@@ -140,13 +137,11 @@ def _spell_correction(doc: str, spell: Any) -> str:
     return text
 
 
-def _fr_nlp() -> spacy.Language:
+def _fr_nlp() -> spacy.language.Language:
     # Prepare NLP processing
-    logging.info(f"Préparation du traitement NLP")
+    logging.info("Préparation du traitement NLP")
     # spacy.prefer_gpu()
-    _nlp = textacy.load_spacy_lang(
-        "fr_core_news_sm", disable=("tagger", "parser", "ner")
-    )
+    _nlp = spacy.load("fr_core_news_sm", disable=("tagger", "parser", "ner"))
     logging.info(f"NLP pipeline: {_nlp.pipe_names}")
     # Adjust stopwords for this specific topic
     _nlp.Defaults.stop_words |= {"y", "france", "esod"}
