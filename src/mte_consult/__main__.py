@@ -11,6 +11,8 @@ import click
 import hunspell  # type: ignore
 import pandas as pd
 import spacy
+import textacy
+from spacy.tokenizer import Tokenizer
 from textacy import preprocessing
 
 
@@ -57,12 +59,53 @@ def main(
     ctx.obj["END_COMMENT"] = end_comment if end_comment > 0 else None
 
 
+def _spell_correction(doc: Tokenizer, spell: Any) -> str:
+    """Spell correction of misspelled words."""
+    global nb_words
+    nb_words += 1
+    if (nb_words % 100) == 0:
+        logging.info(f"Spell checking word number {nb_words}")
+    text = ""
+    for d in doc:
+        word = d.text
+        # Spell check meaningfull words only
+        if d.is_space:
+            pass  # Nothing to check
+        elif d.is_stop or d.is_punct or spell.spell(word):
+            text += d.text_with_ws
+        else:
+            sp = spell.suggest(word)
+            if len(sp) > 0:
+                rep = sp[0]
+                print(word + " => " + rep)
+                text += rep + d.whitespace_
+            else:
+                logging.warning(f"Unable to correct {word}")
+                text += d.text_with_ws
+    return text
+
+
+def _fr_nlp() -> spacy.language.Language:
+    # Prepare NLP processing
+    logging.info("Préparation du traitement NLP")
+    # spacy.prefer_gpu()
+    _nlp = spacy.load("fr_core_news_sm", disable=("tagger", "parser", "ner"))
+    logging.info(f"NLP pipeline: {_nlp.pipe_names}")
+    # Adjust stopwords for this specific topic
+    _nlp.Defaults.stop_words |= {"y", "france", "esod"}
+    _nlp.Defaults.stop_words -= {"pour"}
+    return _nlp
+
+
 @main.command()
 @click.pass_context
 def preprocess(ctx: click.Context) -> None:
     """Prétraitement du fichier brut contenant les commentaires."""
     consultation = ctx.obj["CONSULTATION"]
     data_dir = ctx.obj["DATA_DIRECTORY"]
+    start_comment = ctx.obj["START_COMMENT"]
+    end_comment = ctx.obj["END_COMMENT"]
+
     logging.info(f"Prétraitement de {consultation} dans {data_dir}")
     csv_file = Path(data_dir + "/raw/" + consultation + ".csv")
     logging.debug("Lecture %s", csv_file)
@@ -104,59 +147,6 @@ def preprocess(ctx: click.Context) -> None:
         preprocessing.normalize.whitespace,
     )
     responses.raw_text = responses["raw_text"].apply(preproc)
-
-    # Ecriture du fichier résultant
-    csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
-    logging.debug("Ecriture dans %s", csv_file)
-    responses.to_csv(csv_file, header=True, quoting=csv.QUOTE_ALL)
-
-
-def _spell_correction(doc: spacy.tokenizer, spell: Any) -> str:
-    """Spell correction of misspelled words."""
-    global nb_words
-    nb_words += 1
-    if (nb_words % 100) == 0:
-        logging.info(f"Spell checking word number {nb_words}")
-    text = ""
-    for d in doc:
-        word = d.text
-        # Spell check meaningfull words only
-        if d.is_space:
-            pass  # Nothing to check
-        elif d.is_stop or d.is_punct or spell.spell(word):
-            text += d.text_with_ws
-        else:
-            sp = spell.suggest(word)
-            if len(sp) > 0:
-                rep = sp[0]
-                print(word + " => " + rep)
-                text += rep + d.whitespace_
-            else:
-                logging.warning(f"Unable to correct {word}")
-                text += d.text_with_ws
-    return text
-
-
-def _fr_nlp() -> spacy.language.Language:
-    # Prepare NLP processing
-    logging.info("Préparation du traitement NLP")
-    # spacy.prefer_gpu()
-    _nlp = spacy.load("fr_core_news_sm", disable=("tagger", "parser", "ner"))
-    logging.info(f"NLP pipeline: {_nlp.pipe_names}")
-    # Adjust stopwords for this specific topic
-    _nlp.Defaults.stop_words |= {"y", "france", "esod"}
-    _nlp.Defaults.stop_words -= {"pour"}
-    return _nlp
-
-
-@main.command()
-@click.pass_context
-def check(ctx: click.Context) -> None:
-    """Correction orthographique des commentaires."""
-    consultation = ctx.obj["CONSULTATION"]
-    data_dir = ctx.obj["DATA_DIRECTORY"]
-    start_comment = ctx.obj["START_COMMENT"]
-    end_comment = ctx.obj["END_COMMENT"]
     logging.info(f"Correction orthographique des commentaires de {consultation}")
     csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
     logging.debug(f"Lecture {csv_file} depuis {start_comment} jusqu'à {end_comment}")
@@ -165,7 +155,7 @@ def check(ctx: click.Context) -> None:
     )
     logging.info("Nombre de commentaires à traiter : %d", len(responses))
 
-    # Correction orthographique
+    # Correction orthographique des commentaires
     spell = hunspell.HunSpell(
         "/usr/share/hunspell/fr_FR.dic", "/usr/share/hunspell/fr_FR.aff"
     )
@@ -176,6 +166,24 @@ def check(ctx: click.Context) -> None:
     responses["checked_text"] = responses["raw_text"].apply(
         lambda d: _spell_correction(tokenizer(d), spell)
     )
+
+    # Ecriture du fichier résultant
+    csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
+    logging.debug("Ecriture dans %s", csv_file)
+    responses.to_csv(csv_file, header=True, quoting=csv.QUOTE_ALL)
+
+
+@main.command()
+@click.pass_context
+def prepare(ctx: click.Context) -> None:
+    """Correction orthographique des commentaires."""
+    consultation = ctx.obj["CONSULTATION"]
+    data_dir = ctx.obj["DATA_DIRECTORY"]
+
+    csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
+    logging.debug("Lecture %s", csv_file)
+    responses = pd.read_csv(csv_file, header=0, quoting=csv.QUOTE_ALL, nrows=1000000)
+    logging.info("Nombre de commentaires prétraités : %d", len(responses))
 
     # Read classification data, if it exists
     csv_file = Path(data_dir + "/external/" + consultation + "_cat.csv")
@@ -189,10 +197,50 @@ def check(ctx: click.Context) -> None:
         logging.info(f"Pas de classification trouvée dans {csv_file}")
         classif = None
 
-    # Save processed data to csv file
+    # Sauvegarde des données préparées dans un fichier csv
     csv_file = Path(data_dir + "/interim/" + consultation + ".csv")
     logging.info(f"Storing {len(responses)} rows of processed data to {csv_file}")
     responses.to_csv(csv_file, index=False, quoting=csv.QUOTE_ALL)
+
+    # Prepare final corpus from spell-checked text, for analysis
+    # corpus = textacy.Corpus(_fr_nlp())
+    # for row in responses.itertuples():
+    #     if textacy.lang_utils.identify_lang(row.raw_text) == "fr":
+    #         corpus.add_record(
+    #             (
+    #                 self._spell_correction(
+    #                     spell,
+    #                     textacy.make_spacy_doc(row.raw_text, self._fr_nlp),
+    #                     logger,
+    #                 ).lower(),
+    #                 {
+    #                     "name": row.nom,
+    #                     "date": row.date,
+    #                     "time": row.heure,
+    #                     "opinion": row.opinion,
+    #                     "uid": row.uid,
+    #                 },
+    #             )
+    #         )
+    # logger.info(_("Response spell checked corpus %s"), corpus)
+    # for d in range(50):
+    #     print(corpus[d]._.preview)
+    #     print("meta:", corpus[d]._.meta)
+    # # Save data
+    # corpus_file = Path.home() / (
+    #     "ana_consult/data/interim/" + config.consultation_name + "_doc.pkl"
+    # )
+    # logger.info(_("Storing NLP document to %s"), corpus_file)
+    # corpus.save(corpus_file)
+
+
+@main.command()
+@click.pass_context
+def classify(ctx: click.Context) -> None:
+    """Classification des commentaires."""
+    logging.info("Classification des commentaires")
+    consultation = ctx.obj["CONSULTATION"]
+    data_dir = ctx.obj["DATA_DIRECTORY"]
 
 
 if __name__ == "__main__":
