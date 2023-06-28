@@ -202,36 +202,28 @@ def prepare(ctx: click.Context) -> None:
     logging.info(f"Storing {len(responses)} rows of processed data to {csv_file}")
     responses.to_csv(csv_file, index=False, quoting=csv.QUOTE_ALL)
 
-    # Prepare final corpus from spell-checked text, for analysis
-    # corpus = textacy.Corpus(_fr_nlp())
-    # for row in responses.itertuples():
-    #     if textacy.lang_utils.identify_lang(row.raw_text) == "fr":
-    #         corpus.add_record(
-    #             (
-    #                 self._spell_correction(
-    #                     spell,
-    #                     textacy.make_spacy_doc(row.raw_text, self._fr_nlp),
-    #                     logger,
-    #                 ).lower(),
-    #                 {
-    #                     "name": row.nom,
-    #                     "date": row.date,
-    #                     "time": row.heure,
-    #                     "opinion": row.opinion,
-    #                     "uid": row.uid,
-    #                 },
-    #             )
-    #         )
-    # logger.info(_("Response spell checked corpus %s"), corpus)
+    # Préparation du corpus de commentaires, pour analyse ultérieure
+    logging.info("Préparation du corpus de commentaires, pour analyse ultérieure")
+    corpus = textacy.Corpus(_fr_nlp())
+    for row in responses.itertuples():
+        if textacy.lang_id.lang_identifier.identify_lang(row.checked_text) == "fr":
+            corpus.add_record(textacy.types.Record(
+                row.checked_text,
+                    {
+                        "date": row.date,
+                        "time": row.heure,
+                        "opinion": row.opinion,
+                    },
+                )
+            )
+    logging.info(f"Corpus : {corpus}")
     # for d in range(50):
     #     print(corpus[d]._.preview)
     #     print("meta:", corpus[d]._.meta)
-    # # Save data
-    # corpus_file = Path.home() / (
-    #     "ana_consult/data/interim/" + config.consultation_name + "_doc.pkl"
-    # )
-    # logger.info(_("Storing NLP document to %s"), corpus_file)
-    # corpus.save(corpus_file)
+    # Save data
+    corpus_file = Path(data_dir + "/interim/" + consultation + "_doc.pkl")
+    logging.info(f"Sauvegarde du corpus dans {corpus_file}")
+    corpus.save(corpus_file)
 
 
 @main.command()
