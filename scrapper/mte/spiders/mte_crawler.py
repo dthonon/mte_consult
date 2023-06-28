@@ -10,9 +10,9 @@ class MteCrawlerSpider(scrapy.Spider):
     ## Modifier le nom de la consultation ci-dessous
     _start_url = (
         "http://www.consultations-publiques.developpement-durable.gouv.fr/"
-        + "projet-de-decret-pris-en-application-de-l-article-a2569.html"
+        + "projet-d-arrete-pris-pour-l-application-de-l-a2864.html"
     )
-    # "projet-de-decret-pris-en-application-de-l-article-a2569"
+
     ## Modifier le nombre de commentaires ci-dessous
     _max_comments = 100
 
@@ -23,10 +23,9 @@ class MteCrawlerSpider(scrapy.Spider):
             self._start_url,
         ]
         for page in range(20, self._max_comments, 20):
-            urls.append(
-                self._start_url + "&debut_forums=" + str(page) + "#pagination_forums"
-            )
-        for url in urls:
+            urls.append(self._start_url + "&debut_forums=" + str(page))
+        # Parcours des commentaires depuis la fin pour minimiser les doublons, au détriment des pertes
+        for url in reversed(urls):
             yield scrapy.Request(url=url, callback=self.parse)
 
     def parse(self, response):
