@@ -110,7 +110,7 @@ def preprocess(ctx: click.Context) -> None:
     csv_file = Path(data_dir + "/raw/" + consultation + ".csv")
     logging.debug("Lecture %s", csv_file)
     responses = pd.read_csv(csv_file, header=0, quoting=csv.QUOTE_ALL, nrows=1000000)
-    logging.info("Nombre de commentaires bruts : %d", len(responses))
+    logging.info(f"Nombre de commentaires bruts : {len(responses)}")
 
     # Découpe du sujet en éléments
     responses[["titre", "date", "heure"]] = responses.sujet.str.extract(
@@ -122,7 +122,7 @@ def preprocess(ctx: click.Context) -> None:
 
     # Suppression des ligne dupliquées
     responses = responses.drop_duplicates(subset=["titre", "texte"])
-    logging.info("Commentaires restants après déduplication : %d", len(responses))
+    logging.info(f"Commentaires restants après déduplication : {len(responses)}")
 
     # Fusion en une colonne pour traitement du texte
     responses["raw_text"] = responses["titre"] + ". " + responses["texte"]
@@ -130,6 +130,7 @@ def preprocess(ctx: click.Context) -> None:
     responses = responses.drop(columns=["texte"])
 
     # Nettoyage du texte brut
+    logging.info("Nettoyage du texte brut")
     responses.raw_text = responses.raw_text.str.replace("[_%=/°]", " ", regex=True)
     responses.raw_text = responses.raw_text.str.replace("+", " plus ")
     responses.raw_text = responses.raw_text.str.replace("*", " fois ")
@@ -147,15 +148,9 @@ def preprocess(ctx: click.Context) -> None:
         preprocessing.normalize.whitespace,
     )
     responses.raw_text = responses["raw_text"].apply(preproc)
-    logging.info(f"Correction orthographique des commentaires de {consultation}")
-    csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
-    logging.debug(f"Lecture {csv_file} depuis {start_comment} jusqu'à {end_comment}")
-    responses = pd.read_csv(
-        csv_file, header=0, quoting=csv.QUOTE_ALL, nrows=end_comment
-    )
-    logging.info("Nombre de commentaires à traiter : %d", len(responses))
 
     # Correction orthographique des commentaires
+    logging.info(f"Correction orthographique des commentaires de {consultation}")
     spell = hunspell.HunSpell(
         "/usr/share/hunspell/fr_FR.dic", "/usr/share/hunspell/fr_FR.aff"
     )
@@ -169,7 +164,7 @@ def preprocess(ctx: click.Context) -> None:
 
     # Ecriture du fichier résultant
     csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
-    logging.debug("Ecriture dans %s", csv_file)
+    logging.debug(f"Ecriture dans {csv_file}")
     responses.to_csv(csv_file, header=True, quoting=csv.QUOTE_ALL)
 
 
@@ -181,9 +176,9 @@ def prepare(ctx: click.Context) -> None:
     data_dir = ctx.obj["DATA_DIRECTORY"]
 
     csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
-    logging.debug("Lecture %s", csv_file)
+    logging.debug(f"Lecture de {csv_file}")
     responses = pd.read_csv(csv_file, header=0, quoting=csv.QUOTE_ALL, nrows=1000000)
-    logging.info("Nombre de commentaires prétraités : %d", len(responses))
+    logging.info(f"Nombre de commentaires prétraités : {len(responses)}")
 
     # Read classification data, if it exists
     csv_file = Path(data_dir + "/external/" + consultation + "_cat.csv")

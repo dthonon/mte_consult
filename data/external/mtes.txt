@@ -11,6 +11,7 @@ AAP
 ACCA
 AFB
 agro
+agro-sylvo-cynégétique
 Aleazzo
 alpagiste
 anthropocentrés
@@ -26,6 +27,7 @@ Brioude
 canis
 CDCFS
 ChatGPT
+CNCFS
 CNPN
 cohabitation
 corbeautière
@@ -89,6 +91,7 @@ lupus
 lyme
 Lyme
 Macronie
+micromammifères
 MNHN
 Monistrol
 Mustela
@@ -114,7 +117,11 @@ reviewed
 salers
 Savoie
 Schieber
+Schraen
 Ségolène
+SFEPM
+SHF
+SNPN
 sphynxs
 Sturnus
 sturnus
@@ -132,7 +139,7 @@ Vulpes
 vulpes
 Wolfalp
 wokisme
-XXième
+XXème
 XXième
 ZDP
 ZFE

@@ -14,7 +14,7 @@ class MteCrawlerSpider(scrapy.Spider):
     )
 
     ## Modifier le nombre de commentaires ci-dessous
-    _max_comments = 100
+    _max_comments = 1000
 
     def start_requests(self):
         ## Création de la liste des pages
