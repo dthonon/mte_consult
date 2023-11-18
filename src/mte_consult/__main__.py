@@ -89,7 +89,18 @@ def _fr_nlp() -> spacy.language.Language:
     # Prepare NLP processing
     logging.info("Préparation du traitement NLP")
     # spacy.prefer_gpu()
-    _nlp = spacy.load("fr_core_news_sm", disable=("tagger", "parser", "ner"))
+    _nlp = spacy.load(
+        "fr_core_news_sm",
+        exclude=(
+            "tok2vec",
+            "morphologizer",
+            "parser",
+            "senter",
+            "attribute_ruler",
+            "lemmatizer",
+            "ner",
+        ),
+    )
     logging.info(f"NLP pipeline: {_nlp.pipe_names}")
     # Adjust stopwords for this specific topic
     _nlp.Defaults.stop_words |= {"y", "france", "esod"}
@@ -130,7 +141,7 @@ def preprocess(ctx: click.Context) -> None:
     responses = responses.drop(columns=["texte"])
 
     # Nettoyage du texte brut
-    responses.raw_text = responses.raw_text.str.replace("[_%=/°]", " ", regex=True)
+    responses.raw_text = responses.raw_text.str.replace("[_%=/°>]", " ", regex=True)
     responses.raw_text = responses.raw_text.str.replace("+", " plus ")
     responses.raw_text = responses.raw_text.str.replace("*", " fois ")
     responses.raw_text = responses.raw_text.str.replace("qq", "quelque")
@@ -207,8 +218,9 @@ def prepare(ctx: click.Context) -> None:
     corpus = textacy.Corpus(_fr_nlp())
     for row in responses.itertuples():
         if textacy.lang_id.lang_identifier.identify_lang(row.checked_text) == "fr":
-            corpus.add_record(textacy.types.Record(
-                row.checked_text,
+            corpus.add_record(
+                textacy.types.Record(
+                    row.checked_text,
                     {
                         "date": row.date,
                         "time": row.heure,
@@ -233,6 +245,35 @@ def classify(ctx: click.Context) -> None:
     logging.info("Classification des commentaires")
     consultation = ctx.obj["CONSULTATION"]
     data_dir = ctx.obj["DATA_DIRECTORY"]
+
+    # Load data
+    corpus_file = Path(data_dir + "/interim/" + consultation + "_doc.pkl")
+    logging.info(f"Chargement du corpus depuis {corpus_file}")
+    corpus = textacy.Corpus.load(_fr_nlp(), corpus_file)
+    logging.info(f"Taille du corpus {corpus}")
+
+    # Define vectorizer parameters
+    logging.info("Simplification du corpus")
+    doc_lemma = pd.DataFrame()
+    for doc in corpus[:10]:
+        print(" ".join(list(textacy.extract.basics.words(doc))))
+        # doc_lemma.append(" ".join(list(textacy.extract.basics.words(doc))))
+
+    # doc_lemma = pd.DataFrame(
+    #     [
+    #         [
+    #             " ".join(
+    #                 list(
+    #                     textacy.extract.basics.words(doc)
+    #                 )
+    #             ),
+    #             doc._.meta["opinion"],
+    #         ]
+    #         for doc in corpus[:1000000]
+    #     ],
+    #     columns=["text", "opinion"],
+    # )
+    print(doc_lemma.head(20))
 
 
 if __name__ == "__main__":
