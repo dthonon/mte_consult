@@ -13,7 +13,7 @@ import pandas as pd
 import spacy
 import textacy
 from spacy.tokenizer import Tokenizer
-from textacy import preprocessing
+from textacy import corpus, preprocessing
 
 
 # Spell checking word counter (global)
@@ -141,6 +141,7 @@ def preprocess(ctx: click.Context) -> None:
     responses = responses.drop(columns=["texte"])
 
     # Nettoyage du texte brut
+    logging.info("Nettoyage du texte brut")
     responses.raw_text = responses.raw_text.str.replace("[_%=/°>]", " ", regex=True)
     responses.raw_text = responses.raw_text.str.replace("+", " plus ")
     responses.raw_text = responses.raw_text.str.replace("*", " fois ")
@@ -159,11 +160,6 @@ def preprocess(ctx: click.Context) -> None:
     )
     responses.raw_text = responses["raw_text"].apply(preproc)
     logging.info(f"Correction orthographique des commentaires de {consultation}")
-    csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
-    logging.debug(f"Lecture {csv_file} depuis {start_comment} jusqu'à {end_comment}")
-    responses = pd.read_csv(
-        csv_file, header=0, quoting=csv.QUOTE_ALL, nrows=end_comment
-    )
     logging.info("Nombre de commentaires à traiter : %d", len(responses))
 
     # Correction orthographique des commentaires
