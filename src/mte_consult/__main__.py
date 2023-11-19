@@ -3,6 +3,7 @@ import csv
 import logging
 import re
 from functools import partial
+import time
 
 # import unicodedata
 from pathlib import Path
@@ -82,16 +83,19 @@ def retrieve(ctx: click.Context) -> None:
     # Récupération des pages de commentaire
     url = "https://www." + domain + "/" + consultation + ".html"
     nb_com_re = re.compile(r"(Consultation.* )(\d+) contributions")
+    max_com = 0
+    s = requests.Session()
     with open(Path(data_dir + "/raw/" + consultation + ".csv"), "w") as csvfile:
         logging.info(f"Ecriture des commentaires dans {csvfile.name}")
         comwriter = csv.writer(csvfile, delimiter=",")
+        comwriter.writerow(["sujet", "texte"])
         for npage in range(start_comment, end_comment, 20):
             if npage == 0:
                 nurl = url + "#pagination_forums"
             else:
                 nurl = url + "&debut_forums=" + str(npage) + "#pagination_forums"
             logging.info(f"Téléchargement depuis {nurl}")
-            page = requests.get(nurl, timeout=10)
+            page = s.get(nurl, timeout=10)
             if page.status_code != 200:
                 break
             contenu = BeautifulSoup(page.content, "html.parser")
@@ -102,6 +106,7 @@ def retrieve(ctx: click.Context) -> None:
             if npage == 0:
                 max_com = int(nb_com.group(2))
             commentaires = contenu.select("div.ligne-com")
+            logging.info(f"Commentaires dans la page : {len(commentaires)}")
             for com in commentaires:
                 c = [
                     com.select_one("div.titresujet").text.strip(),
@@ -110,6 +115,7 @@ def retrieve(ctx: click.Context) -> None:
                 comwriter.writerow(c)
             if npage > max_com:
                 break
+            time.sleep(1)
 
 
 def _spell_correction(doc: Tokenizer, spell: Any) -> str:
