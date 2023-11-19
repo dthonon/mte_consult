@@ -16,7 +16,7 @@ classifiers = [
 Changelog = "https://github.com/dthonon/mte_consult/releases"
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.11"
+python = ">=3.10,<4"
 click = ">=8.0.1"
 Scrapy = ">2.8.0"
 pandas = "^2.0.2"
@@ -24,6 +24,8 @@ pandas-stubs = "^2.0.2.230605"
 textacy = "^0.13.0"
 scikit-learn = "^1.2.2"
 hunspell = "^0.5.5"
+requests = "^2.31.0"
+beautifulsoup4 = "^4.12.2"
 
 [tool.poetry.dev-dependencies]
 Pygments = ">=2.10.0"

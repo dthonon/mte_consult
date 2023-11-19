@@ -1,15 +1,18 @@
 """Command-line interface."""
 import csv
 import logging
+import re
 from functools import partial
 
 # import unicodedata
 from pathlib import Path
 from typing import Any
 
+from bs4 import BeautifulSoup
 import click
 import hunspell  # type: ignore
 import pandas as pd
+import requests
 import spacy
 import textacy
 from spacy.tokenizer import Tokenizer
@@ -32,6 +35,11 @@ logging.basicConfig(
     help="Répertoire contenant les répertoires de données raw, preprocessed ...",
 )
 @click.option(
+    "--domain",
+    default=".",
+    help="Base de l'URL du site",
+)
+@click.option(
     "--start_comment", default=1, help="Numéro de premier commentaire à analyser"
 )
 @click.option(
@@ -43,20 +51,65 @@ logging.basicConfig(
 @click.pass_context
 def main(
     ctx: click.Context,
+    domain: str,
     consultation: str,
-    data_directory: str,
     start_comment: int,
     end_comment: int,
+    data_directory: str,
 ) -> None:
     """Mte_Consult."""
     # ensure that ctx.obj exists and is a dict (in case `cli()` is called
     # by means other than the `if` block below)
     ctx.ensure_object(dict)
 
+    ctx.obj["DOMAIN"] = domain
     ctx.obj["CONSULTATION"] = consultation
     ctx.obj["DATA_DIRECTORY"] = data_directory
-    ctx.obj["START_COMMENT"] = start_comment if start_comment > 1 else None
-    ctx.obj["END_COMMENT"] = end_comment if end_comment > 0 else None
+    ctx.obj["START_COMMENT"] = start_comment if start_comment > 1 else 0
+    ctx.obj["END_COMMENT"] = end_comment if end_comment > 0 else 100000
+
+
+@main.command()
+@click.pass_context
+def retrieve(ctx: click.Context) -> None:
+    """Récupération des commentaires de la consultation."""
+    domain = ctx.obj["DOMAIN"]
+    consultation = ctx.obj["CONSULTATION"]
+    data_dir = ctx.obj["DATA_DIRECTORY"]
+    start_comment = ctx.obj["START_COMMENT"]
+    end_comment = ctx.obj["END_COMMENT"]
+
+    # Récupération des pages de commentaire
+    url = "https://www." + domain + "/" + consultation + ".html"
+    nb_com_re = re.compile(r"(Consultation.* )(\d+) contributions")
+    with open(Path(data_dir + "/raw/" + consultation + ".csv"), "w") as csvfile:
+        logging.info(f"Ecriture des commentaires dans {csvfile.name}")
+        comwriter = csv.writer(csvfile, delimiter=",")
+        for npage in range(start_comment, end_comment, 20):
+            if npage == 0:
+                nurl = url + "#pagination_forums"
+            else:
+                nurl = url + "&debut_forums=" + str(npage) + "#pagination_forums"
+            logging.info(f"Téléchargement depuis {nurl}")
+            page = requests.get(nurl, timeout=10)
+            if page.status_code != 200:
+                break
+            contenu = BeautifulSoup(page.content, "html.parser")
+            nb_com = re.match(
+                nb_com_re,
+                contenu.select_one("div.dateart").text.strip().replace("\n", ""),
+            )
+            if npage == 0:
+                max_com = int(nb_com.group(2))
+            commentaires = contenu.select("div.ligne-com")
+            for com in commentaires:
+                c = [
+                    com.select_one("div.titresujet").text.strip(),
+                    com.select_one("div.textesujet").text.strip().replace("\n", " "),
+                ]
+                comwriter.writerow(c)
+            if npage > max_com:
+                break
 
 
 def _spell_correction(doc: Tokenizer, spell: Any) -> str:
@@ -64,7 +117,7 @@ def _spell_correction(doc: Tokenizer, spell: Any) -> str:
     global nb_words
     nb_words += 1
     if (nb_words % 100) == 0:
-        logging.info(f"Spell checking word number {nb_words}")
+        logging.info(f"Vérification orthographique de {nb_words} mots")
     text = ""
     for d in doc:
         word = d.text
