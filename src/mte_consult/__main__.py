@@ -84,38 +84,47 @@ def retrieve(ctx: click.Context) -> None:
     url = "https://www." + domain + "/" + consultation + ".html"
     nb_com_re = re.compile(r"(Consultation.* )(\d+) contributions")
     max_com = 0
-    s = requests.Session()
-    with open(Path(data_dir + "/raw/" + consultation + ".csv"), "w") as csvfile:
-        logging.info(f"Ecriture des commentaires dans {csvfile.name}")
-        comwriter = csv.writer(csvfile, delimiter=",")
-        comwriter.writerow(["sujet", "texte"])
-        for npage in range(start_comment, end_comment, 20):
-            if npage == 0:
-                nurl = url + "#pagination_forums"
-            else:
-                nurl = url + "&debut_forums=" + str(npage) + "#pagination_forums"
-            logging.info(f"Téléchargement depuis {nurl}")
-            page = s.get(nurl, timeout=10)
-            if page.status_code != 200:
-                break
-            contenu = BeautifulSoup(page.content, "html.parser")
-            nb_com = re.match(
-                nb_com_re,
-                contenu.select_one("div.dateart").text.strip().replace("\n", ""),
-            )
-            if npage == 0:
-                max_com = int(nb_com.group(2))
-            commentaires = contenu.select("div.ligne-com")
-            logging.info(f"Commentaires dans la page : {len(commentaires)}")
-            for com in commentaires:
-                c = [
-                    com.select_one("div.titresujet").text.strip(),
-                    com.select_one("div.textesujet").text.strip().replace("\n", " "),
-                ]
-                comwriter.writerow(c)
-            if npage > max_com:
-                break
-            time.sleep(1)
+    headers = {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+    }
+    with requests.Session() as s:
+        with open(Path(data_dir + "/raw/" + consultation + ".csv"), "a") as csvfile:
+            # Note : ecriture en mode append pour essayer de trouver un maximum de contributions
+            # vu que chaque boucle n'en récupère qu'une partie (pb de cache serveur ?)
+            logging.info(f"Ecriture des commentaires dans {csvfile.name}")
+            comwriter = csv.writer(csvfile, delimiter=",")
+            comwriter.writerow(["sujet", "texte"])
+            for npage in range(start_comment + 1, end_comment, 20):
+                if npage == start_comment + 1:
+                    payload = {"lang": "fr"}
+                else:
+                    payload = {"lang": "fr", "debut_forums": str(npage)}
+                logging.info(f"Téléchargement depuis {url}, params : {payload}")
+                page = s.get(url, params=payload, timeout=10, headers=headers)
+                if page.status_code != requests.codes.ok:
+                    break
+                contenu = BeautifulSoup(page.content, "html.parser")
+                nb_com = re.match(
+                    nb_com_re,
+                    contenu.select_one("div.dateart").text.strip().replace("\n", ""),
+                )
+                if npage == start_comment + 1:
+                    max_com = int(nb_com.group(2))
+                commentaires = contenu.select("div.ligne-com")
+                logging.info(f"Commentaires dans la page : {len(commentaires)}")
+                for com in commentaires:
+                    c = [
+                        com.select_one("div.titresujet").text.strip(),
+                        com.select_one("div.textesujet")
+                        .text.strip()
+                        .replace("\n", " "),
+                    ]
+                    comwriter.writerow(c)
+                if npage > max_com:
+                    break
+                time.sleep(5)
 
 
 def _spell_correction(doc: Tokenizer, spell: Any) -> str:
