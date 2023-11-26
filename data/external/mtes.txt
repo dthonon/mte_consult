@@ -35,6 +35,7 @@ cricetus
 corone
 Corvus
 corvus
+CPT
 CRSPN
 Culebra
 cyberaction
@@ -93,10 +94,12 @@ lupus
 lyme
 Lyme
 Macronie
+Maurienne
 micromammifères
 MNHN
 Monistrol
 moyennageuse
+MTE
 Mustela
 mustela
 Natura
@@ -107,6 +110,7 @@ ONCFS
 ONF
 PAC
 pastoraloup
+Pastoraloup
 patou
 patous
 peer
@@ -116,6 +120,7 @@ Prost
 protégeable
 proxiloup
 Queyras
+Reeves
 reviewed
 salers
 Savoie

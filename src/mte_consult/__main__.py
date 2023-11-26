@@ -1,21 +1,21 @@
 """Command-line interface."""
 import csv
 import logging
+import random
 import re
-from functools import partial
 import time
+from functools import partial
 
 # import unicodedata
 from pathlib import Path
 from typing import Any
 
-from bs4 import BeautifulSoup
 import click
 import hunspell  # type: ignore
 import pandas as pd
 import requests
 import spacy
-import textacy
+from bs4 import BeautifulSoup
 from spacy.tokenizer import Tokenizer
 from textacy import preprocessing
 
@@ -80,28 +80,34 @@ def retrieve(ctx: click.Context) -> None:
     start_comment = ctx.obj["START_COMMENT"]
     end_comment = ctx.obj["END_COMMENT"]
 
+    logging.info(f"Téléchargement de {consultation}")
+    csv_file = Path(data_dir + "/raw/" + consultation + ".csv")
+    if csv_file.is_file():
+        logging.debug(f"Lecture des téléchargements depuis {csv_file}")
+        responses = pd.read_csv(
+            csv_file, header=0, quoting=csv.QUOTE_ALL, nrows=1000000
+        )
+    else:
+        logging.debug(f"Pas de téléchargement précédents")
+        responses = pd.DataFrame()
+    logging.info(f"Nombre de commentaires lus : {len(responses)}")
+
     # Récupération des pages de commentaire
     url = "https://www." + domain + "/" + consultation + ".html"
     nb_com_re = re.compile(r"(Consultation.* )(\d+) contributions")
-    max_com = 0
     headers = {
         "Cache-Control": "no-cache, no-store, must-revalidate",
         "Pragma": "no-cache",
         "Expires": "0",
     }
     with requests.Session() as s:
-        with open(Path(data_dir + "/raw/" + consultation + ".csv"), "a") as csvfile:
-            # Note : ecriture en mode append pour essayer de trouver un maximum de contributions
-            # vu que chaque boucle n'en récupère qu'une partie (pb de cache serveur ?)
-            logging.info(f"Ecriture des commentaires dans {csvfile.name}")
-            comwriter = csv.writer(csvfile, delimiter=",")
-            comwriter.writerow(["sujet", "texte"])
-            for npage in range(start_comment + 1, end_comment, 20):
-                if npage == start_comment + 1:
-                    payload = {"lang": "fr"}
-                else:
-                    payload = {"lang": "fr", "debut_forums": str(npage)}
-                logging.info(f"Téléchargement depuis {url}, params : {payload}")
+        starting = start_comment
+        pages = [i for i in range(starting, end_comment, 20)]
+        random.shuffle(pages)
+        for npage in pages:
+            payload = {"lang": "fr", "debut_forums": str(npage)}
+            logging.info(f"Téléchargement depuis {url}, params : {payload}")
+            try:
                 page = s.get(url, params=payload, timeout=10, headers=headers)
                 if page.status_code != requests.codes.ok:
                     break
@@ -110,21 +116,35 @@ def retrieve(ctx: click.Context) -> None:
                     nb_com_re,
                     contenu.select_one("div.dateart").text.strip().replace("\n", ""),
                 )
-                if npage == start_comment + 1:
+                if npage == starting:
                     max_com = int(nb_com.group(2))
                 commentaires = contenu.select("div.ligne-com")
                 logging.info(f"Commentaires dans la page : {len(commentaires)}")
                 for com in commentaires:
-                    c = [
-                        com.select_one("div.titresujet").text.strip(),
-                        com.select_one("div.textesujet")
-                        .text.strip()
-                        .replace("\n", " "),
-                    ]
-                    comwriter.writerow(c)
-                if npage > max_com:
-                    break
-                time.sleep(5)
+                    c = pd.DataFrame(
+                        {
+                            "sujet": com.select_one("div.titresujet").text.strip(),
+                            "texte": com.select_one("div.textesujet")
+                            .text.strip()
+                            .replace("\n", " "),
+                        },
+                        index=[0],
+                    )
+                    responses = pd.concat([c, responses.loc[:]]).reset_index(drop=True)
+                time.sleep(1)
+            except (
+                requests.exceptions.ReadTimeout,
+                requests.exceptions.Timeout,
+                TimeoutError,
+            ):
+                logging.warning("Page en timeout")
+
+    # Suppression des ligne dupliquées
+    logging.info(f"Commentaires avant déduplication : {len(responses)}")
+    responses = responses.drop_duplicates(subset=["sujet", "texte"])
+    logging.info(f"Commentaires restants après déduplication : {len(responses)}")
+    logging.debug(f"Ecriture dans {csv_file}")
+    responses.to_csv(csv_file, header=True, quoting=csv.QUOTE_ALL, index=False)
 
 
 def _spell_correction(doc: Tokenizer, spell: Any) -> str:
@@ -171,8 +191,6 @@ def preprocess(ctx: click.Context) -> None:
     """Prétraitement du fichier brut contenant les commentaires."""
     consultation = ctx.obj["CONSULTATION"]
     data_dir = ctx.obj["DATA_DIRECTORY"]
-    start_comment = ctx.obj["START_COMMENT"]
-    end_comment = ctx.obj["END_COMMENT"]
 
     logging.info(f"Prétraitement de {consultation} dans {data_dir}")
     csv_file = Path(data_dir + "/raw/" + consultation + ".csv")
@@ -233,7 +251,7 @@ def preprocess(ctx: click.Context) -> None:
     # Ecriture du fichier résultant
     csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
     logging.debug(f"Ecriture dans {csv_file}")
-    responses.to_csv(csv_file, header=True, quoting=csv.QUOTE_ALL)
+    responses.to_csv(csv_file, header=True, quoting=csv.QUOTE_ALL, index=False)
 
 
 @main.command()
@@ -254,8 +272,12 @@ def prepare(ctx: click.Context) -> None:
         logging.info(f"Chargement des classifications {csv_file}")
         classif = pd.read_csv(csv_file, header=0, quoting=csv.QUOTE_ALL)
         logging.info(f"Lu {len(classif)} données de classification")
-        classif = classif.drop(columns=["checked_text"])
-        responses = responses.merge(classif, on="sujet", how="left")
+        classif.drop(
+            columns=["checked_text", "titre", "date", "heure", "raw_text"], inplace=True
+        )
+        responses = pd.merge(
+            responses, classif, on="sujet", how="left", suffixes=(None, "_c")
+        )
     else:
         logging.info(f"Pas de classification trouvée dans {csv_file}")
         classif = None
