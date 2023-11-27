@@ -3,3 +3,4 @@
 # Except these files
 !.gitignore
 !mtes.txt
+!*_cat.csv

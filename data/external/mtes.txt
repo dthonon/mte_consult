@@ -26,6 +26,7 @@ Borrelia
 Brioude
 canis
 CDCFS
+CGEDD
 ChatGPT
 CNCFS
 CNPN
@@ -76,6 +77,7 @@ garrulus
 géodiversité
 Ghandi
 glandarius
+GNL
 IFOP
 IPBES
 JA
@@ -118,6 +120,7 @@ PNA
 PNL
 Prost
 protégeable
+protégeabilité
 proxiloup
 Queyras
 Reeves
@@ -127,12 +130,14 @@ Savoie
 Schieber
 Schraen
 Ségolène
+sentients
 SFEPM
 SHF
 SNPN
 sphynxs
 Sturnus
 sturnus
+surchasse
 Sutherland
 SVP
 Tchernobyl
