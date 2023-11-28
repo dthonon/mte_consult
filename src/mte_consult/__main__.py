@@ -84,9 +84,7 @@ def retrieve(ctx: click.Context) -> None:
     csv_file = Path(data_dir + "/raw/" + consultation + ".csv")
     if csv_file.is_file():
         logging.debug(f"Lecture des téléchargements depuis {csv_file}")
-        responses = pd.read_csv(
-            csv_file, header=0, quoting=csv.QUOTE_ALL, nrows=1000000
-        )
+        responses = pd.read_csv(csv_file, header=0, sep=";")
     else:
         logging.debug(f"Pas de téléchargement précédents")
         responses = pd.DataFrame()
@@ -144,7 +142,7 @@ def retrieve(ctx: click.Context) -> None:
     responses = responses.drop_duplicates(subset=["sujet", "texte"])
     logging.info(f"Commentaires restants après déduplication : {len(responses)}")
     logging.debug(f"Ecriture dans {csv_file}")
-    responses.to_csv(csv_file, header=True, quoting=csv.QUOTE_ALL, index=False)
+    responses.to_csv(csv_file, header=True, sep=";", index=False)
 
 
 def _spell_correction(doc: Tokenizer, spell: Any) -> str:
@@ -195,7 +193,7 @@ def preprocess(ctx: click.Context) -> None:
     logging.info(f"Prétraitement de {consultation} dans {data_dir}")
     csv_file = Path(data_dir + "/raw/" + consultation + ".csv")
     logging.debug("Lecture %s", csv_file)
-    responses = pd.read_csv(csv_file, header=0, quoting=csv.QUOTE_ALL, nrows=1000000)
+    responses = pd.read_csv(csv_file, header=0, sep=";")
     logging.info(f"Nombre de commentaires bruts : {len(responses)}")
 
     # Découpe du sujet en éléments
@@ -251,7 +249,7 @@ def preprocess(ctx: click.Context) -> None:
     # Ecriture du fichier résultant
     csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
     logging.debug(f"Ecriture dans {csv_file}")
-    responses.to_csv(csv_file, header=True, quoting=csv.QUOTE_ALL, index=False)
+    responses.to_csv(csv_file, header=True, sep=";", index=False)
 
 
 @main.command()
@@ -263,18 +261,16 @@ def prepare(ctx: click.Context) -> None:
 
     csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
     logging.debug(f"Lecture de {csv_file}")
-    responses = pd.read_csv(csv_file, header=0, quoting=csv.QUOTE_ALL, nrows=1000000)
+    responses = pd.read_csv(csv_file, header=0, sep=";")
     logging.info(f"Nombre de commentaires prétraités : {len(responses)}")
 
     # Read classification data, if it exists
     csv_file = Path(data_dir + "/external/" + consultation + "_cat.csv")
     if csv_file.exists():
         logging.info(f"Chargement des classifications {csv_file}")
-        classif = pd.read_csv(csv_file, header=0, quoting=csv.QUOTE_ALL)
+        classif = pd.read_csv(csv_file, header=0, sep=";")
         logging.info(f"Lu {len(classif)} données de classification")
-        classif.drop(
-            columns=["checked_text", "titre", "date", "heure", "raw_text"], inplace=True
-        )
+        classif.drop(columns=["checked_text"], inplace=True)
         responses = pd.merge(
             responses, classif, on="sujet", how="left", suffixes=(None, "_c")
         )
@@ -285,38 +281,7 @@ def prepare(ctx: click.Context) -> None:
     # Sauvegarde des données préparées dans un fichier csv
     csv_file = Path(data_dir + "/interim/" + consultation + ".csv")
     logging.info(f"Storing {len(responses)} rows of processed data to {csv_file}")
-    responses.to_csv(csv_file, index=False, quoting=csv.QUOTE_ALL)
-
-    # Prepare final corpus from spell-checked text, for analysis
-    # corpus = textacy.Corpus(_fr_nlp())
-    # for row in responses.itertuples():
-    #     if textacy.lang_utils.identify_lang(row.raw_text) == "fr":
-    #         corpus.add_record(
-    #             (
-    #                 self._spell_correction(
-    #                     spell,
-    #                     textacy.make_spacy_doc(row.raw_text, self._fr_nlp),
-    #                     logger,
-    #                 ).lower(),
-    #                 {
-    #                     "name": row.nom,
-    #                     "date": row.date,
-    #                     "time": row.heure,
-    #                     "opinion": row.opinion,
-    #                     "uid": row.uid,
-    #                 },
-    #             )
-    #         )
-    # logger.info(_("Response spell checked corpus %s"), corpus)
-    # for d in range(50):
-    #     print(corpus[d]._.preview)
-    #     print("meta:", corpus[d]._.meta)
-    # # Save data
-    # corpus_file = Path.home() / (
-    #     "ana_consult/data/interim/" + config.consultation_name + "_doc.pkl"
-    # )
-    # logger.info(_("Storing NLP document to %s"), corpus_file)
-    # corpus.save(corpus_file)
+    responses.to_csv(csv_file, index=False, header=True, sep=";")
 
 
 @main.command()

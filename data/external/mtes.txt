@@ -15,6 +15,7 @@ agro-sylvo-cynégétique
 Aleazzo
 alpagiste
 anthropocentrés
+APNE
 ASPAS
 Bambi
 bête
@@ -26,6 +27,7 @@ Borrelia
 Brioude
 canis
 CDCFS
+Cdlt
 CGEDD
 ChatGPT
 CNCFS
@@ -80,6 +82,9 @@ glandarius
 GNL
 IFOP
 IPBES
+Isles
+italicus
+Italicus
 JA
 Jiguet
 kangal
@@ -123,6 +128,7 @@ protégeable
 protégeabilité
 proxiloup
 Queyras
+RAMSAR
 Reeves
 reviewed
 salers
@@ -140,6 +146,7 @@ sturnus
 surchasse
 Sutherland
 SVP
+Talkie
 Tchernobyl
 thymallus
 UICN
@@ -150,10 +157,13 @@ vttistes
 vulgaris
 Vulpes
 vulpes
+walkie
 Wolfalp
 wokisme
+WWF
 XXème
 XXième
+Yosemite
 ZDP
 ZFE
 Zunino
