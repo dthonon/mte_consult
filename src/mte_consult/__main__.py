@@ -9,6 +9,9 @@ from functools import partial
 # import unicodedata
 from pathlib import Path
 from typing import Any
+from typing import List
+from typing import Set
+from typing import Tuple
 
 import click
 import hunspell  # type: ignore
@@ -17,6 +20,7 @@ import requests
 import spacy
 from bs4 import BeautifulSoup
 from spacy.tokenizer import Tokenizer
+from spacy.tokens import DocBin
 from textacy import preprocessing
 
 
@@ -41,12 +45,17 @@ logging.basicConfig(
     help="Base de l'URL du site",
 )
 @click.option(
-    "--start_comment", default=1, help="Numéro de premier commentaire à analyser"
+    "--start_comment", default=1, help="Numéro de premier commentaire à télécharger"
 )
 @click.option(
     "--end_comment",
     default=0,
-    help="Numéro de dernier commentaire à analyser, 0 : pas de limite",
+    help="Numéro de dernier commentaire à télécharger, 0 : pas de limite",
+)
+@click.option(
+    "--nb_pages",
+    default=0,
+    help="Nombre de pages à télécharger, 0 : pas de limite",
 )
 @click.argument("consultation")
 @click.pass_context
@@ -56,6 +65,7 @@ def main(
     consultation: str,
     start_comment: int,
     end_comment: int,
+    nb_pages: int,
     data_directory: str,
 ) -> None:
     """Mte_Consult."""
@@ -68,6 +78,7 @@ def main(
     ctx.obj["DATA_DIRECTORY"] = data_directory
     ctx.obj["START_COMMENT"] = start_comment if start_comment > 1 else 0
     ctx.obj["END_COMMENT"] = end_comment if end_comment > 0 else 100000
+    ctx.obj["NB_PAGES"] = nb_pages if nb_pages > 0 else 100000
 
 
 @main.command()
@@ -79,6 +90,7 @@ def retrieve(ctx: click.Context) -> None:
     data_dir = ctx.obj["DATA_DIRECTORY"]
     start_comment = ctx.obj["START_COMMENT"]
     end_comment = ctx.obj["END_COMMENT"]
+    nb_pages = ctx.obj["NB_PAGES"]
 
     logging.info(f"Téléchargement de {consultation}")
     csv_file = Path(data_dir + "/raw/" + consultation + ".csv")
@@ -102,7 +114,7 @@ def retrieve(ctx: click.Context) -> None:
         starting = start_comment
         pages = [i for i in range(starting, end_comment, 20)]
         random.shuffle(pages)
-        for npage in pages:
+        for npage in pages[1:nb_pages]:
             payload = {"lang": "fr", "debut_forums": str(npage)}
             logging.info(f"Téléchargement depuis {url}, params : {payload}")
             try:
@@ -252,6 +264,21 @@ def preprocess(ctx: click.Context) -> None:
     responses.to_csv(csv_file, header=True, sep=";", index=False)
 
 
+# Create a function to create a spacy dataset
+def _make_docs(data: List[Tuple[str, str]], target_file: str, cats: Set[str]):
+    docs = DocBin()
+    # Use nlp.pipe to efficiently process a large number of text inputs,
+    # the as_tuple arguments enables giving a list of tuples as input and
+    # reuse it in the loop, here for the labels
+    for doc, label in nlp.pipe(data, as_tuples=True):
+        # Encode the labels (assign 1 the subreddit)
+        for cat in cats:
+            doc.cats[cat] = 1 if cat == label else 0
+        docs.add(doc)
+    docs.to_disk(target_file)
+    return docs
+
+
 @main.command()
 @click.pass_context
 def prepare(ctx: click.Context) -> None:
@@ -282,6 +309,9 @@ def prepare(ctx: click.Context) -> None:
     csv_file = Path(data_dir + "/interim/" + consultation + ".csv")
     logging.info(f"Storing {len(responses)} rows of processed data to {csv_file}")
     responses.to_csv(csv_file, index=False, header=True, sep=";")
+
+    cats = responses.opinion.unique().tolist()
+    print(cats)
 
 
 @main.command()
