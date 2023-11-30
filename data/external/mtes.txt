@@ -152,6 +152,7 @@ thymallus
 UICN
 Valberg
 Valmer
+Verdon
 vétos
 vttistes
 vulgaris

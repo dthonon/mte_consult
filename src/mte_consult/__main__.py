@@ -28,7 +28,7 @@ from textacy import preprocessing
 nb_words = 0
 
 logging.basicConfig(
-    level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
 
@@ -114,7 +114,7 @@ def retrieve(ctx: click.Context) -> None:
         starting = start_comment
         pages = [i for i in range(starting, end_comment, 20)]
         random.shuffle(pages)
-        for npage in pages[1:nb_pages]:
+        for npage in pages[:nb_pages]:
             payload = {"lang": "fr", "debut_forums": str(npage)}
             logging.info(f"Téléchargement depuis {url}, params : {payload}")
             try:
@@ -130,6 +130,7 @@ def retrieve(ctx: click.Context) -> None:
                     max_com = int(nb_com.group(2))
                 commentaires = contenu.select("div.ligne-com")
                 logging.info(f"Commentaires dans la page : {len(commentaires)}")
+                pre_drop = len(responses)
                 for com in commentaires:
                     c = pd.DataFrame(
                         {
@@ -141,20 +142,22 @@ def retrieve(ctx: click.Context) -> None:
                         index=[0],
                     )
                     responses = pd.concat([c, responses.loc[:]]).reset_index(drop=True)
-                time.sleep(1)
+                # Suppression des ligne dupliquées et sauvegarde
+                responses = responses.drop_duplicates(subset=["sujet"])
+                logging.info(
+                    f"Nb de nouveaux commentaires : {len(responses) - pre_drop}, total : {len(responses)}"
+                )
+                logging.debug(f"Ecriture dans {csv_file}")
+                responses.to_csv(csv_file, header=True, sep=";", index=False)
+                time.sleep(2 * 60)
             except (
+                requests.exceptions.ConnectionError,
                 requests.exceptions.ReadTimeout,
                 requests.exceptions.Timeout,
                 TimeoutError,
             ):
                 logging.warning("Page en timeout")
-
-    # Suppression des ligne dupliquées
-    logging.info(f"Commentaires avant déduplication : {len(responses)}")
-    responses = responses.drop_duplicates(subset=["sujet", "texte"])
-    logging.info(f"Commentaires restants après déduplication : {len(responses)}")
-    logging.debug(f"Ecriture dans {csv_file}")
-    responses.to_csv(csv_file, header=True, sep=";", index=False)
+                time.sleep(10)
 
 
 def _spell_correction(doc: Tokenizer, spell: Any) -> str:
@@ -217,8 +220,10 @@ def preprocess(ctx: click.Context) -> None:
     )
 
     # Suppression des ligne dupliquées
-    responses = responses.drop_duplicates(subset=["titre", "texte"])
-    logging.info(f"Commentaires restants après déduplication : {len(responses)}")
+    responses = responses.drop_duplicates(subset=["texte"])
+    logging.info(
+        f"Commentaires restants après déduplication du texte: {len(responses)}"
+    )
 
     # Fusion en une colonne pour traitement du texte
     responses["raw_text"] = responses["titre"] + ". " + responses["texte"]
