@@ -100,34 +100,41 @@ def retrieve(ctx: click.Context) -> None:
     else:
         logging.debug(f"Pas de téléchargement précédents")
         responses = pd.DataFrame()
-    logging.info(f"Nombre de commentaires lus : {len(responses)}")
+    logging.info(f"Nombre de commentaires déjà téléchargés : {len(responses)}")
 
     # Récupération des pages de commentaire
     url = "https://www." + domain + "/" + consultation + ".html"
     nb_com_re = re.compile(r"(Consultation.* )(\d+) contributions")
+    forum_re = re.compile(r'<strong class="on">(\d+)</strong>')
     headers = {
         "Cache-Control": "no-cache, no-store, must-revalidate",
         "Pragma": "no-cache",
         "Expires": "0",
     }
-    with requests.Session() as s:
-        starting = start_comment
-        pages = [i for i in range(starting, end_comment, 20)]
-        random.shuffle(pages)
-        for npage in pages[:nb_pages]:
+
+    pages = [i for i in range(start_comment, end_comment, 20)]
+    random.shuffle(pages)
+    # pages.insert(0, 0)  # Force download from first page
+    max_com = 1000000
+    for npage in pages[: nb_pages + 1]:
+        if npage < max_com:
             payload = {"lang": "fr", "debut_forums": str(npage)}
             logging.info(f"Téléchargement depuis {url}, params : {payload}")
             try:
-                page = s.get(url, params=payload, timeout=10, headers=headers)
+                page = requests.get(url, params=payload, timeout=10, headers=headers)
                 if page.status_code != requests.codes.ok:
                     break
                 contenu = BeautifulSoup(page.content, "html.parser")
+
                 nb_com = re.match(
                     nb_com_re,
                     contenu.select_one("div.dateart").text.strip().replace("\n", ""),
                 )
-                if npage == starting:
-                    max_com = int(nb_com.group(2))
+                max_com = int(nb_com.group(2))
+
+                forum = re.match(forum_re, str(contenu.find("strong", "on")))
+                logging.info(f"Page demandée : {npage}, page reçue : {forum.group(1)}")
+
                 commentaires = contenu.select("div.ligne-com")
                 logging.info(f"Commentaires dans la page : {len(commentaires)}")
                 pre_drop = len(responses)
@@ -149,7 +156,7 @@ def retrieve(ctx: click.Context) -> None:
                 )
                 logging.debug(f"Ecriture dans {csv_file}")
                 responses.to_csv(csv_file, header=True, sep=";", index=False)
-                time.sleep(2 * 60)
+                time.sleep(10)
             except (
                 requests.exceptions.ConnectionError,
                 requests.exceptions.ReadTimeout,
