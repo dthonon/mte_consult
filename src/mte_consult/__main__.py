@@ -15,6 +15,7 @@ from typing import Tuple
 
 import click
 import hunspell  # type: ignore
+from lingua import Language, LanguageDetectorBuilder
 import pandas as pd
 import requests
 import spacy
@@ -107,16 +108,20 @@ def retrieve(ctx: click.Context) -> None:
     nb_com_re = re.compile(r"(Consultation.* )(\d+) contributions")
     forum_re = re.compile(r'<strong class="on">(\d+)</strong>')
     headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
         "Cache-Control": "no-cache, no-store, must-revalidate",
         "Pragma": "no-cache",
         "Expires": "0",
     }
 
+    # Création de la liste des pages à télécharger
     pages = [i for i in range(start_comment, end_comment, 20)]
     random.shuffle(pages)
-    # pages.insert(0, 0)  # Force download from first page
+    pages = pages[: nb_pages + 1]
     max_com = 1000000
-    for npage in pages[: nb_pages + 1]:
+
+    while len(pages) > 0:
+        npage = pages[0]
         if npage < max_com:
             payload = {"lang": "fr", "debut_forums": str(npage)}
             logging.info(f"Téléchargement depuis {url}, params : {payload}")
@@ -133,10 +138,15 @@ def retrieve(ctx: click.Context) -> None:
                 max_com = int(nb_com.group(2))
 
                 forum = re.match(forum_re, str(contenu.find("strong", "on")))
-                logging.info(f"Page demandée : {npage}, page reçue : {forum.group(1)}")
+                rec = int(forum.group(1))
+                logging.info(f"Page demandée : {npage}, page reçue : {rec}")
+                # La page reçue est retirée de la liste
+                if rec in pages:
+                    pages.remove(rec)
+                # Et la liste est mélangée à nouveau
+                random.shuffle(pages)
 
                 commentaires = contenu.select("div.ligne-com")
-                logging.info(f"Commentaires dans la page : {len(commentaires)}")
                 pre_drop = len(responses)
                 for com in commentaires:
                     c = pd.DataFrame(
@@ -152,7 +162,7 @@ def retrieve(ctx: click.Context) -> None:
                 # Suppression des ligne dupliquées et sauvegarde
                 responses = responses.drop_duplicates(subset=["sujet"])
                 logging.info(
-                    f"Nb de nouveaux commentaires : {len(responses) - pre_drop}, total : {len(responses)}"
+                    f"Nb de nouveaux commentaires : {len(responses) - pre_drop}/{len(commentaires)}, total : {len(responses)}"
                 )
                 logging.debug(f"Ecriture dans {csv_file}")
                 responses.to_csv(csv_file, header=True, sep=";", index=False)
@@ -212,6 +222,9 @@ def preprocess(ctx: click.Context) -> None:
     consultation = ctx.obj["CONSULTATION"]
     data_dir = ctx.obj["DATA_DIRECTORY"]
 
+    languages = [Language.ENGLISH, Language.FRENCH]
+    detector = LanguageDetectorBuilder.from_languages(*languages).build()
+
     logging.info(f"Prétraitement de {consultation} dans {data_dir}")
     csv_file = Path(data_dir + "/raw/" + consultation + ".csv")
     logging.debug("Lecture %s", csv_file)
@@ -231,6 +244,12 @@ def preprocess(ctx: click.Context) -> None:
     logging.info(
         f"Commentaires restants après déduplication du texte: {len(responses)}"
     )
+
+    # Suppression du texte anglais
+    lang = responses["texte"].apply(lambda d: detector.detect_language_of(d))
+    pd.set_option("display.max_colwidth", None)
+    responses.drop(responses[lang != Language.FRENCH].index, inplace=True)
+    logging.info(f"Commentaires français restant : {len(responses)}")
 
     # Fusion en une colonne pour traitement du texte
     responses["raw_text"] = responses["titre"] + ". " + responses["texte"]
@@ -264,7 +283,6 @@ def preprocess(ctx: click.Context) -> None:
     )
     added_words = Path(data_dir + "/external/" + "mtes.txt")
     spell.add_dic(added_words)
-    # spell.remove("abatage")
     tokenizer = _fr_nlp().tokenizer
     responses["checked_text"] = responses["raw_text"].apply(
         lambda d: _spell_correction(tokenizer(d), spell)
