@@ -29,6 +29,10 @@ types-requests = "^2.31.0.10"
 types-beautifulsoup4 = "^4.12.0.7"
 lingua-language-detector = "^2.0.1"
 weasel = "^0.3.4"
+cupy-cuda12x = "^12.3.0"
+streamlit = "^1.29.0"
+spacy-streamlit = "^1.0.6"
+fr-projet-de-pna-loup = {path = "models/projet_de_pna_loup/packages/fr_projet_de_pna_loup-0.0.1/dist/fr_projet_de_pna_loup-0.0.1.tar.gz"}
 
 [tool.poetry.dev-dependencies]
 Pygments = ">=2.10.0"

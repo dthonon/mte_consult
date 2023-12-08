@@ -1,0 +1,53 @@
+convert:
+  cmd: python -m weasel run convert
+  script:
+    - python scripts/convert.py fr ../../data/external/projet-de-plan-national-d-actions-2024-2029-sur-le-a2940_cat.csv
+      corpus/train.spacy corpus/dev.spacy
+  deps:
+    - path: ../../data/external/projet-de-plan-national-d-actions-2024-2029-sur-le-a2940_cat.csv
+      md5: a30b7c7cadc09879817ddda33031bf93
+    - path: scripts/convert.py
+      md5: 87a6a978eb59ce037757a0c30e9be040
+  outs:
+    - path: corpus/train.spacy
+      md5: 938eb36e2952a8aa94b83db01821b8ec
+    - path: corpus/dev.spacy
+      md5: e2f00e164a342c7e2f8f2a345eb93023
+train:
+  cmd: python -m weasel run train
+  script:
+    - python -m spacy train configs/config.cfg --output training/ --paths.train corpus/train.spacy
+      --paths.dev corpus/dev.spacy --nlp.lang fr --gpu-id -1
+  deps:
+    - path: configs/config.cfg
+      md5: c76b77256fa7257156504836035bddcf
+    - path: corpus/train.spacy
+      md5: 938eb36e2952a8aa94b83db01821b8ec
+    - path: corpus/dev.spacy
+      md5: e2f00e164a342c7e2f8f2a345eb93023
+  outs:
+    - path: training/model-best
+      md5: 0808d05762d047b446d26815dc912020
+evaluate:
+  cmd: python -m weasel run evaluate
+  script:
+    - python -m spacy evaluate training/model-best corpus/dev.spacy --output training/metrics.json
+  deps:
+    - path: corpus/dev.spacy
+      md5: e2f00e164a342c7e2f8f2a345eb93023
+    - path: training/model-best
+      md5: 0808d05762d047b446d26815dc912020
+  outs:
+    - path: training/metrics.json
+      md5: 60a931b627c51d3a0834af5b17b3092a
+package:
+  cmd: python -m weasel run package
+  script:
+    - python -m spacy package training/model-best packages --name projet_de_pna_loup
+      --version 0.0.1 --force
+  deps:
+    - path: training/model-best
+      md5: 0808d05762d047b446d26815dc912020
+  outs:
+    - path: packages/fr_projet_de_pna_loup-0.0.1/dist/fr_projet_de_pna_loup-0.0.1.tar.gz
+      md5: 72b2901c553b09eac941eb4366a3b858
