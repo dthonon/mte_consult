@@ -1,5 +1,4 @@
 """Command-line interface."""
-import csv
 import logging
 import random
 import re
@@ -23,6 +22,7 @@ from bs4 import BeautifulSoup
 from spacy.tokenizer import Tokenizer
 from spacy.tokens import DocBin
 from textacy import preprocessing
+import fr_projet_de_pna_loup
 
 
 # Spell checking word counter (global)
@@ -108,7 +108,8 @@ def retrieve(ctx: click.Context) -> None:
     nb_com_re = re.compile(r"(Consultation.* )(\d+) contributions")
     forum_re = re.compile(r'<strong class="on">(\d+)</strong>')
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        + "(KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
         "Cache-Control": "no-cache, no-store, must-revalidate",
         "Pragma": "no-cache",
         "Expires": "0",
@@ -309,54 +310,28 @@ def preprocess(ctx: click.Context) -> None:
     responses.to_csv(csv_file, header=True, sep=";", index=False)
 
 
-# Create a function to create a spacy dataset
-def _make_docs(data: List[Tuple[str, str]], target_file: str, cats: Set[str]):
-    docs = DocBin()
-    # Use nlp.pipe to efficiently process a large number of text inputs,
-    # the as_tuple arguments enables giving a list of tuples as input and
-    # reuse it in the loop, here for the labels
-    for doc, label in nlp.pipe(data, as_tuples=True):
-        # Encode the labels (assign 1 the subreddit)
-        for cat in cats:
-            doc.cats[cat] = 1 if cat == label else 0
-        docs.add(doc)
-    docs.to_disk(target_file)
-    return docs
+# @main.command()
+# @click.pass_context
+# def prepare(ctx: click.Context) -> None:
+#     """Correction orthographique des commentaires."""
+#     consultation = ctx.obj["CONSULTATION"]
+#     data_dir = ctx.obj["DATA_DIRECTORY"]
 
+#     csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
+#     logging.debug(f"Lecture de {csv_file}")
+#     responses = pd.read_csv(csv_file, header=0, sep=";")
+#     logging.info(f"Nombre de commentaires prétraités : {len(responses)}")
 
-@main.command()
-@click.pass_context
-def prepare(ctx: click.Context) -> None:
-    """Correction orthographique des commentaires."""
-    consultation = ctx.obj["CONSULTATION"]
-    data_dir = ctx.obj["DATA_DIRECTORY"]
-
-    csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
-    logging.debug(f"Lecture de {csv_file}")
-    responses = pd.read_csv(csv_file, header=0, sep=";")
-    logging.info(f"Nombre de commentaires prétraités : {len(responses)}")
-
-    # Read classification data, if it exists
-    csv_file = Path(data_dir + "/external/" + consultation + "_cat.csv")
-    if csv_file.exists():
-        logging.info(f"Chargement des classifications {csv_file}")
-        classif = pd.read_csv(csv_file, header=0, sep=";")
-        logging.info(f"Lu {len(classif)} données de classification")
-        classif.drop(columns=["checked_text"], inplace=True)
-        responses = pd.merge(
-            responses, classif, on="sujet", how="left", suffixes=(None, "_c")
-        )
-    else:
-        logging.info(f"Pas de classification trouvée dans {csv_file}")
-        classif = None
-
-    # Sauvegarde des données préparées dans un fichier csv
-    csv_file = Path(data_dir + "/interim/" + consultation + ".csv")
-    logging.info(f"Storing {len(responses)} rows of processed data to {csv_file}")
-    responses.to_csv(csv_file, index=False, header=True, sep=";")
-
-    cats = responses.opinion.unique().tolist()
-    print(cats)
+#     # Sauvegarde des données préparées dans un fichier DocBin
+#     nlp = _fr_nlp()
+#     doc_file = Path(data_dir + "/interim/" + consultation + ".spacy")
+#     logging.info(f"Storing {len(responses)} rows of processed data to {doc_file}")
+#     responses.to_csv(csv_file, index=False, header=True, sep=";")
+#     db = DocBin()
+#     for _index, line in responses.iterrows():
+#         doc = nlp.make_doc(line["checked_text"])
+#         db.add(doc)
+#     db.to_disk(doc_file)
 
 
 @main.command()
@@ -366,6 +341,28 @@ def classify(ctx: click.Context) -> None:
     logging.info("Classification des commentaires")
     consultation = ctx.obj["CONSULTATION"]
     data_dir = ctx.obj["DATA_DIRECTORY"]
+
+    # Lecture des commentaires
+    csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
+    responses = pd.read_csv(csv_file, header=0, sep=";")
+    logging.info(f"Read {len(responses)} rows of processed data from {csv_file}")
+
+    nlp = spacy.load("fr_projet_de_pna_loup")
+    for index, line in responses.iterrows():
+        t = line["checked_text"]
+        doc = nlp(t)
+        responses.at[index, "Opinion_estimée"] = (
+            "Favorable" if doc.cats["Favorable"] > 0.5 else "Défavorable"
+        )
+        responses.at[index, "Favorable"] = doc.cats["Favorable"]
+        responses.at[index, "Défavorable"] = doc.cats["Défavorable"]
+
+    print(responses["Opinion_estimée"].describe())
+
+    # Ecriture du fichier résultant
+    csv_file = Path(data_dir + "/processed/" + consultation + ".csv")
+    logging.info(f"Ecriture dans {csv_file}")
+    responses.to_csv(csv_file, header=True, sep=";", index=False)
 
 
 if __name__ == "__main__":
