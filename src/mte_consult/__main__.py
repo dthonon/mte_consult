@@ -130,6 +130,7 @@ def retrieve(ctx: click.Context) -> None:
                 page = requests.get(url, params=payload, timeout=10, headers=headers)
                 if page.status_code != requests.codes.ok:
                     logging.warning(f"Page en erreur HTTP : {page.status_code}")
+                    time.sleep(10)
                     continue
                 contenu = BeautifulSoup(page.content, "html.parser")
 
@@ -166,7 +167,7 @@ def retrieve(ctx: click.Context) -> None:
                 # Suppression des ligne dupliquées et sauvegarde
                 responses = responses.drop_duplicates(subset=["sujet"])
                 logging.info(
-                    f"Nb de nouveaux commentaires : {len(responses) - pre_drop}/{len(commentaires)}, total : {len(responses)}"
+                    f"Nb de nouveaux commentaires : {len(responses) - pre_drop}/{len(commentaires)}, total : {len(responses)}/{max_com}"
                 )
                 logging.debug(f"Ecriture dans {csv_file}")
                 responses.to_csv(csv_file, header=True, sep=";", index=False)
