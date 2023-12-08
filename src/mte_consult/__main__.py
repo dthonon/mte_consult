@@ -116,11 +116,12 @@ def retrieve(ctx: click.Context) -> None:
 
     # Création de la liste des pages à télécharger
     pages = [i for i in range(start_comment, end_comment, 20)]
-    random.shuffle(pages)
     pages = pages[: nb_pages + 1]
     max_com = 1000000
 
     while len(pages) > 0:
+        # La liste est mélangée pour éviter de boucler sur une page en erreur transitoire
+        random.shuffle(pages)
         npage = pages[0]
         if npage < max_com:
             payload = {"lang": "fr", "debut_forums": str(npage)}
@@ -128,23 +129,26 @@ def retrieve(ctx: click.Context) -> None:
             try:
                 page = requests.get(url, params=payload, timeout=10, headers=headers)
                 if page.status_code != requests.codes.ok:
-                    break
+                    logging.warning(f"Page en erreur HTTP : {page.status_code}")
+                    continue
                 contenu = BeautifulSoup(page.content, "html.parser")
 
                 nb_com = re.match(
                     nb_com_re,
                     contenu.select_one("div.dateart").text.strip().replace("\n", ""),
                 )
-                max_com = int(nb_com.group(2))
+                if int(nb_com.group(2)) > 0 and max_com != int(nb_com.group(2)):
+                    max_com = int(nb_com.group(2))
+                    logging.info(f"Nombre total de commentaires {max_com}")
 
                 forum = re.match(forum_re, str(contenu.find("strong", "on")))
                 rec = int(forum.group(1))
-                logging.info(f"Page demandée : {npage}, page reçue : {rec}")
                 # La page reçue est retirée de la liste
                 if rec in pages:
                     pages.remove(rec)
-                # Et la liste est mélangée à nouveau
-                random.shuffle(pages)
+                logging.info(
+                    f"Page demandée : {npage}, page reçue : {rec}, pages restantes {len(pages)}"
+                )
 
                 commentaires = contenu.select("div.ligne-com")
                 pre_drop = len(responses)
@@ -171,9 +175,10 @@ def retrieve(ctx: click.Context) -> None:
                 requests.exceptions.ConnectionError,
                 requests.exceptions.ReadTimeout,
                 requests.exceptions.Timeout,
+                requests.exceptions.ChunkedEncodingError,
                 TimeoutError,
-            ):
-                logging.warning("Page en timeout")
+            ) as exc:
+                logging.warning(f"Page en erreur : {type(exc)}")
                 time.sleep(10)
 
 
@@ -223,7 +228,11 @@ def preprocess(ctx: click.Context) -> None:
     data_dir = ctx.obj["DATA_DIRECTORY"]
 
     languages = [Language.ENGLISH, Language.FRENCH]
-    detector = LanguageDetectorBuilder.from_languages(*languages).build()
+    detector = (
+        LanguageDetectorBuilder.from_languages(*languages)
+        # .with_minimum_relative_distance(0.99)
+        .build()
+    )
 
     logging.info(f"Prétraitement de {consultation} dans {data_dir}")
     csv_file = Path(data_dir + "/raw/" + consultation + ".csv")
@@ -248,6 +257,11 @@ def preprocess(ctx: click.Context) -> None:
     # Suppression du texte anglais
     lang = responses["texte"].apply(lambda d: detector.detect_language_of(d))
     pd.set_option("display.max_colwidth", None)
+    for t in responses.texte[lang != Language.FRENCH]:
+        logging.debug(f"Langue {detector.detect_language_of(t)} : {t}")
+        confidence_values = detector.compute_language_confidence_values(t)
+        for confidence in confidence_values:
+            logging.debug(f"{confidence.language.name}: {confidence.value:.2f}")
     responses.drop(responses[lang != Language.FRENCH].index, inplace=True)
     logging.info(f"Commentaires français restant : {len(responses)}")
 
