@@ -342,20 +342,25 @@ def classify(ctx: click.Context) -> None:
     data_dir = ctx.obj["DATA_DIRECTORY"]
 
     # Lecture des commentaires
-    csv_file = Path(data_dir + "/interim/" + consultation + ".csv")
+    csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
     responses = pd.read_csv(csv_file, header=0, sep=";")
     logging.info(f"Read {len(responses)} rows of processed data from {csv_file}")
 
     nlp = spacy.load("fr_projet_de_pna_loup")
-    for _index, line in responses.iterrows():
+    for index, line in responses.iterrows():
         t = line["checked_text"]
         doc = nlp(t)
-        responses["Favorable"] = doc.cats["Favorable"]
-        responses["Défavorable"] = doc.cats["Défavorable"]
+        responses.at[index, "Opinion_estimée"] = (
+            "Favorable" if doc.cats["Favorable"] > 0.5 else "Défavorable"
+        )
+        responses.at[index, "Favorable"] = doc.cats["Favorable"]
+        responses.at[index, "Défavorable"] = doc.cats["Défavorable"]
+
+    print(responses["Opinion_estimée"].describe())
 
     # Ecriture du fichier résultant
     csv_file = Path(data_dir + "/processed/" + consultation + ".csv")
-    logging.debug(f"Ecriture dans {csv_file}")
+    logging.info(f"Ecriture dans {csv_file}")
     responses.to_csv(csv_file, header=True, sep=";", index=False)
 
 
