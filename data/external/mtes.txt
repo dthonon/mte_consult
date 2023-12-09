@@ -80,6 +80,7 @@ Fletcher
 FNB
 FNC
 FNE
+FNEC
 FNO
 FNSEA
 foina
