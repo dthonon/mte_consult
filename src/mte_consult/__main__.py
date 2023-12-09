@@ -22,7 +22,6 @@ from bs4 import BeautifulSoup
 from spacy.tokenizer import Tokenizer
 from spacy.tokens import DocBin
 from textacy import preprocessing
-import fr_projet_de_pna_loup
 
 
 # Spell checking word counter (global)
@@ -274,10 +273,14 @@ def preprocess(ctx: click.Context) -> None:
 
     # Nettoyage du texte brut
     logging.info("Nettoyage du texte brut")
-    responses.raw_text = responses.raw_text.str.replace("[_%=/°]", " ", regex=True)
+    responses.raw_text = responses.raw_text.str.replace(r"\r", " ", regex=True)
     responses.raw_text = responses.raw_text.str.replace("+", " plus ")
     responses.raw_text = responses.raw_text.str.replace("*", " fois ")
     responses.raw_text = responses.raw_text.str.replace("qq", "quelque")
+    responses.raw_text = responses.raw_text.str.replace("(", " (")
+    responses.raw_text = responses.raw_text.str.replace(")", " )")
+    responses.raw_text = responses.raw_text.str.replace(r"\s+", " ", regex=True)
+    responses.raw_text = responses.raw_text.str.replace(r"[_%=/°]", " ", regex=True)
     responses.raw_text = responses.raw_text.str.replace(r"\d\dh\d\d", "", regex=True)
     preproc = preprocessing.pipeline.make_pipeline(
         preprocessing.normalize.bullet_points,
@@ -345,17 +348,20 @@ def classify(ctx: click.Context) -> None:
     # Lecture des commentaires
     csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
     responses = pd.read_csv(csv_file, header=0, sep=";")
-    logging.info(f"Read {len(responses)} rows of processed data from {csv_file}")
+    logging.info(
+        f"Lecture de {len(responses)} commentaires prétraités depuis {csv_file}"
+    )
 
     nlp = spacy.load("fr_projet_de_pna_loup")
     for index, line in responses.iterrows():
         t = line["checked_text"]
-        doc = nlp(t)
-        responses.at[index, "Opinion_estimée"] = (
-            "Favorable" if doc.cats["Favorable"] > 0.5 else "Défavorable"
-        )
-        responses.at[index, "Favorable"] = doc.cats["Favorable"]
-        responses.at[index, "Défavorable"] = doc.cats["Défavorable"]
+        if isinstance(t, str) and len(t) > 10:
+            doc = nlp(t)
+            responses.at[index, "Opinion_estimée"] = (
+                "Favorable" if doc.cats["Favorable"] > 0.5 else "Défavorable"
+            )
+            responses.at[index, "Favorable"] = doc.cats["Favorable"]
+            responses.at[index, "Défavorable"] = doc.cats["Défavorable"]
 
     print(responses["Opinion_estimée"].describe())
 

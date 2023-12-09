@@ -14,7 +14,10 @@ agro
 agro-sylvo-cynégétique
 Aleazzo
 alpagiste
+anthropocentré
+anthropocentrée
 anthropocentrés
+APN
 APNE
 ASPAS
 Bambi
@@ -28,6 +31,7 @@ Brioude
 canis
 CDCFS
 Cdlt
+CERPAM
 CGAAER
 CGEDD
 ChatGPT
@@ -42,6 +46,7 @@ corone
 Corvus
 corvus
 CPT
+CQFD
 CRSPN
 Culebra
 cyberaction
@@ -89,6 +94,7 @@ Ghandi
 glandarius
 GNL
 Grente
+H&B
 Hainard
 IFOP
 IGEDD
@@ -128,6 +134,7 @@ Natura
 Nemrod
 nivalis
 OFB
+Oksana
 ONCFS
 ONF
 PAC
@@ -158,6 +165,7 @@ SNPN
 SNU
 socioécologiques
 sphynxs
+Stone
 Sturnus
 sturnus
 surchasse
@@ -183,8 +191,10 @@ wokisme
 WWF
 XXème
 XXième
+Yellow
 Yellowstone
 Yosemite
 ZDP
 ZFE
+ZPP
 Zunino
