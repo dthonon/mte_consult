@@ -313,28 +313,17 @@ def preprocess(ctx: click.Context) -> None:
     responses.to_csv(csv_file, header=True, sep=";", index=False)
 
 
-# @main.command()
-# @click.pass_context
-# def prepare(ctx: click.Context) -> None:
-#     """Correction orthographique des commentaires."""
-#     consultation = ctx.obj["CONSULTATION"]
-#     data_dir = ctx.obj["DATA_DIRECTORY"]
+@main.command()
+@click.pass_context
+def cluster(ctx: click.Context) -> None:
+    """Clustering des commentaires."""
+    consultation = ctx.obj["CONSULTATION"]
+    data_dir = ctx.obj["DATA_DIRECTORY"]
 
-#     csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
-#     logging.debug(f"Lecture de {csv_file}")
-#     responses = pd.read_csv(csv_file, header=0, sep=";")
-#     logging.info(f"Nombre de commentaires prétraités : {len(responses)}")
-
-#     # Sauvegarde des données préparées dans un fichier DocBin
-#     nlp = _fr_nlp()
-#     doc_file = Path(data_dir + "/interim/" + consultation + ".spacy")
-#     logging.info(f"Storing {len(responses)} rows of processed data to {doc_file}")
-#     responses.to_csv(csv_file, index=False, header=True, sep=";")
-#     db = DocBin()
-#     for _index, line in responses.iterrows():
-#         doc = nlp.make_doc(line["checked_text"])
-#         db.add(doc)
-#     db.to_disk(doc_file)
+    csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
+    logging.debug(f"Lecture de {csv_file}")
+    responses = pd.read_csv(csv_file, header=0, sep=";")
+    logging.info(f"Nombre de commentaires prétraités : {len(responses)}")
 
 
 @main.command()
