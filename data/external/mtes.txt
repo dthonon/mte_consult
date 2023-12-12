@@ -127,6 +127,7 @@ MNHN
 Monistrol
 Morizot
 moyennageuse
+MSA
 MTE
 mulotage
 Mustela
@@ -136,6 +137,7 @@ Nemrod
 nivalis
 OFB
 Oksana
+One
 ONCFS
 ONF
 PAC
@@ -158,7 +160,6 @@ salers
 Savoie
 Schieber
 Schraen
-Ségolène
 sentients
 SFEPM
 SHF
@@ -181,6 +182,7 @@ Valberg
 Valmer
 Verdon
 vétos
+Voice
 vttistes
 vulgaris
 Vulpes

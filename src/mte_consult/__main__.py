@@ -3,6 +3,7 @@ import logging
 import random
 import re
 import time
+from collections import Counter
 from functools import partial
 
 # import unicodedata
@@ -14,11 +15,15 @@ from typing import Tuple
 
 import click
 import hunspell  # type: ignore
-from lingua import Language, LanguageDetectorBuilder
 import pandas as pd
 import requests
 import spacy
 from bs4 import BeautifulSoup
+from lingua import Language
+from lingua import LanguageDetectorBuilder
+from sklearn import metrics
+from sklearn.cluster import KMeans
+from sklearn.feature_extraction.text import TfidfVectorizer
 from spacy.tokenizer import Tokenizer
 from spacy.tokens import DocBin
 from textacy import preprocessing
@@ -213,12 +218,27 @@ def _fr_nlp() -> spacy.language.Language:
     # Prepare NLP processing
     logging.info("Préparation du traitement NLP")
     # spacy.prefer_gpu()
-    _nlp = spacy.load("fr_core_news_sm", disable=("tagger", "parser", "ner"))
+    _nlp = spacy.load(
+        "fr_core_news_sm",
+        disable=(
+            "ner",
+            "textcat",
+            "attribute_ruler",
+            "tok2vec",
+        ),
+    )
     logging.info(f"NLP pipeline: {_nlp.pipe_names}")
     # Adjust stopwords for this specific topic
     _nlp.Defaults.stop_words |= {"y", "france", "esod"}
     _nlp.Defaults.stop_words -= {"pour"}
     return _nlp
+
+
+def _lemmatize(doc) -> str:
+    # Take the `token.lemma_` of each non-stop word
+    return " ".join(
+        [token.lemma_ for token in doc if not (token.is_stop or token.is_punct)]
+    )
 
 
 @main.command()
@@ -249,7 +269,7 @@ def preprocess(ctx: click.Context) -> None:
         by="date", ignore_index=True
     )
 
-    # Suppression des ligne dupliquées
+    # Suppression des ligne dupliquéest
     responses = responses.drop_duplicates(subset=["texte"])
     logging.info(
         f"Commentaires restants après déduplication du texte: {len(responses)}"
@@ -302,10 +322,12 @@ def preprocess(ctx: click.Context) -> None:
     )
     added_words = Path(data_dir + "/external/" + "mtes.txt")
     spell.add_dic(added_words)
-    tokenizer = _fr_nlp().tokenizer
+    nlp = _fr_nlp()
+    tokenizer = nlp.tokenizer
     responses["checked_text"] = responses["raw_text"].apply(
         lambda d: _spell_correction(tokenizer(d), spell)
     )
+    responses["lemma"] = responses["checked_text"].apply(lambda d: _lemmatize(nlp(d)))
 
     # Ecriture du fichier résultant
     csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
@@ -320,10 +342,40 @@ def cluster(ctx: click.Context) -> None:
     consultation = ctx.obj["CONSULTATION"]
     data_dir = ctx.obj["DATA_DIRECTORY"]
 
-    csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
+    csv_file = Path(data_dir + "/processed/" + consultation + ".csv")
     logging.debug(f"Lecture de {csv_file}")
     responses = pd.read_csv(csv_file, header=0, sep=";")
     logging.info(f"Nombre de commentaires prétraités : {len(responses)}")
+
+    logging.info("Vectorisation des textes")
+    tfidf_vectorizer = TfidfVectorizer(
+        max_df=0.9, min_df=0.1, stop_words=None, use_idf=True, ngram_range=(1, 3)
+    )
+    # Fit vectoriser to NLP processed column
+    tfidf_matrix = tfidf_vectorizer.fit_transform(responses.lemma)
+    logging.info(f"TF-IDF (n_samples, n_features): {tfidf_matrix.shape}")
+
+    # K-means clustering
+    logging.info("K-means clustering")
+    true_k = 2
+    model = KMeans(n_clusters=true_k, init="k-means++", max_iter=100, n_init=1)
+    pred_labels = list(model.fit_predict(tfidf_matrix))
+    logging.info("Résumé de clusterisation:")
+    true_labels = [0 if d == "Favorable" else 1 for d in responses.Opinion_estimée]
+    print(true_labels[:30])
+    print(pred_labels[:30])
+    print("Homogeneity: %0.3f" % metrics.homogeneity_score(true_labels, pred_labels))
+    print(metrics.confusion_matrix(true_labels, pred_labels))
+    order_centroids = model.cluster_centers_.argsort()[:, ::-1]
+    terms = tfidf_vectorizer.get_feature_names_out()
+    cl_size = Counter(model.labels_)
+    for i in range(true_k):
+        logging.info(
+            f"Cluster {i}, proportion: {cl_size[i] / len(responses) * 100}%, top terms:"
+        )
+
+        top_t = ", ".join([terms[t] for t in order_centroids[i, :10]])
+        logging.info(top_t)
 
 
 @main.command()
