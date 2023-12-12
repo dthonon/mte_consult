@@ -43,11 +43,11 @@ evaluate:
 package:
   cmd: python -m weasel run package
   script:
-    - python -m spacy package training/model-best packages --name projet_de_pna_loup
+    - python -m spacy package training/model-best packages --name projet_arrete_tirs
       --version 0.0.1 --force
   deps:
     - path: training/model-best
-      md5: 2c3424c3027f142e98cf6446b525270c
+      md5: d61fdd38e56626f95262044798e8fe50
   outs:
-    - path: packages/fr_projet_de_pna_loup-0.0.1/dist/fr_projet_de_pna_loup-0.0.1.tar.gz
-      md5: 3906d41e945ab8063ef6d51f992de269
+    - path: packages/fr_projet_arrete_tirs-0.0.1/dist/fr_projet_arrete_tirs-0.0.1.tar.gz
+      md5: adfbce9a51ebdac7435f6088d6f0d0df

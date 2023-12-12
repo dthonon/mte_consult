@@ -341,7 +341,7 @@ def classify(ctx: click.Context) -> None:
         f"Lecture de {len(responses)} commentaires prétraités depuis {csv_file}"
     )
 
-    nlp = spacy.load("fr_projet_de_pna_loup")
+    nlp = spacy.load("fr_projet_arrete_tirs")
     for index, line in responses.iterrows():
         t = line["checked_text"]
         if isinstance(t, str) and len(t) > 10:

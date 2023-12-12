@@ -943,6 +943,23 @@ files = [
 numpy = "*"
 
 [[package]]
+name = "fr_projet_arrete_tirs"
+version = "0.0.1"
+description = ""
+optional = false
+python-versions = "*"
+files = [
+    {file = "fr_projet_arrete_tirs-0.0.1.tar.gz", hash = "sha256:f3a2030432e3e8c4a6e6b9e3ca76642ce09ba24c9e9e04c9cd2f821958e2931a"},
+]
+
+[package.dependencies]
+spacy = ">=3.7.2,<3.8.0"
+
+[package.source]
+type = "file"
+url = "models/projet_arrêté_tirs/packages/fr_projet_arrete_tirs-0.0.1/dist/fr_projet_arrete_tirs-0.0.1.tar.gz"
+
+[[package]]
 name = "fr_projet_de_pna_loup"
 version = "0.0.1"
 description = ""
@@ -3625,4 +3642,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<4"
-content-hash = "f9a8ad91652c79939d673699dfcdd49bc06deb30c1783c0c1d2b20689acb22b6"
+content-hash = "fe3e2aea610df6acec07284618f20d1e206a7f938ed58d79c14105d0949da356"

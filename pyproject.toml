@@ -33,6 +33,7 @@ cupy-cuda12x = "^12.3.0"
 streamlit = "^1.29.0"
 spacy-streamlit = "^1.0.6"
 fr-projet-de-pna-loup = {path = "models/projet_de_pna_loup/packages/fr_projet_de_pna_loup-0.0.1/dist/fr_projet_de_pna_loup-0.0.1.tar.gz"}
+fr-projet-arrete-tirs = {path = "models/projet_arrêté_tirs/packages/fr_projet_arrete_tirs-0.0.1/dist/fr_projet_arrete_tirs-0.0.1.tar.gz"}
 
 [tool.poetry.dev-dependencies]
 Pygments = ">=2.10.0"
