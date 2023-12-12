@@ -1,0 +1,53 @@
+convert:
+  cmd: python -m weasel run convert
+  script:
+    - python scripts/convert.py fr ../../data/external/projet-d-arrete-fixant-les-conditions-et-limites-a2941_cat.csv
+      corpus/train.spacy corpus/dev.spacy
+  deps:
+    - path: ../../data/external/projet-d-arrete-fixant-les-conditions-et-limites-a2941_cat.csv
+      md5: df9693854832d80299b5bd40216743f7
+    - path: scripts/convert.py
+      md5: 87a6a978eb59ce037757a0c30e9be040
+  outs:
+    - path: corpus/train.spacy
+      md5: 8b7bd41cec49d806346d725d78eb22dd
+    - path: corpus/dev.spacy
+      md5: 43b7f35b9b7b9f74c9f6141c856fa6b7
+train:
+  cmd: python -m weasel run train
+  script:
+    - python -m spacy train configs/config.cfg --output training/ --paths.train corpus/train.spacy
+      --paths.dev corpus/dev.spacy --nlp.lang fr --gpu-id -1
+  deps:
+    - path: configs/config.cfg
+      md5: c76b77256fa7257156504836035bddcf
+    - path: corpus/train.spacy
+      md5: 8b7bd41cec49d806346d725d78eb22dd
+    - path: corpus/dev.spacy
+      md5: 43b7f35b9b7b9f74c9f6141c856fa6b7
+  outs:
+    - path: training/model-best
+      md5: d61fdd38e56626f95262044798e8fe50
+evaluate:
+  cmd: python -m weasel run evaluate
+  script:
+    - python -m spacy evaluate training/model-best corpus/dev.spacy --output training/metrics.json
+  deps:
+    - path: corpus/dev.spacy
+      md5: 43b7f35b9b7b9f74c9f6141c856fa6b7
+    - path: training/model-best
+      md5: d61fdd38e56626f95262044798e8fe50
+  outs:
+    - path: training/metrics.json
+      md5: 0d1f878aa62eb57439476940f4d8dd82
+package:
+  cmd: python -m weasel run package
+  script:
+    - python -m spacy package training/model-best packages --name projet_de_pna_loup
+      --version 0.0.1 --force
+  deps:
+    - path: training/model-best
+      md5: 2c3424c3027f142e98cf6446b525270c
+  outs:
+    - path: packages/fr_projet_de_pna_loup-0.0.1/dist/fr_projet_de_pna_loup-0.0.1.tar.gz
+      md5: 3906d41e945ab8063ef6d51f992de269
