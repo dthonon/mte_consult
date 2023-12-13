@@ -15,6 +15,7 @@ from typing import Tuple
 
 import click
 import hunspell  # type: ignore
+import numpy as np
 import pandas as pd
 import requests
 import spacy
@@ -22,6 +23,7 @@ from bs4 import BeautifulSoup
 from lingua import Language
 from lingua import LanguageDetectorBuilder
 from sklearn import metrics
+from sklearn.cluster import DBSCAN
 from sklearn.cluster import KMeans
 from sklearn.feature_extraction.text import TfidfVectorizer
 from spacy.tokenizer import Tokenizer
@@ -350,7 +352,7 @@ def cluster(ctx: click.Context) -> None:
     logging.info("Vectorisation des textes")
     stop = ["arrêté", "avis", "loup"]
     tfidf_vectorizer = TfidfVectorizer(
-        max_df=0.99, min_df=0.1, stop_words=stop, use_idf=True, ngram_range=(2, 3)
+        max_df=0.99, min_df=0.1, stop_words=stop, use_idf=True, ngram_range=(1, 3)
     )
     # Fit vectoriser to NLP processed column
     tfidf_matrix = tfidf_vectorizer.fit_transform(responses.lemma)
@@ -366,8 +368,8 @@ def cluster(ctx: click.Context) -> None:
     true_labels = [0 if d == labels[0] else 1 for d in responses.Opinion_estimée]
     print(true_labels[:30])
     print(pred_labels[:30])
-    print("Homogeneity: %0.3f" % metrics.homogeneity_score(true_labels, pred_labels))
-    print(metrics.confusion_matrix(true_labels, pred_labels))
+    logging.info("Homogénéité: {metrics.homogeneity_score(true_labels, pred_labels)}")
+    logging.info(metrics.confusion_matrix(true_labels, pred_labels))
     order_centroids = model.cluster_centers_.argsort()[:, ::-1]
     terms = tfidf_vectorizer.get_feature_names_out()
     cl_size = Counter(model.labels_)
@@ -378,6 +380,24 @@ def cluster(ctx: click.Context) -> None:
 
         top_t = ", ".join([terms[t] for t in order_centroids[i, :10]])
         logging.info(top_t)
+
+    # DBSCAN clustering
+    logging.info("DBSCAN clustering")
+    model = DBSCAN(eps=2.1, min_samples=10, metric="l1")
+    model.fit(tfidf_matrix)
+    logging.info("Cluster summary:")
+    core_samples_mask = np.zeros_like(model.labels_, dtype=bool)
+    core_samples_mask[model.core_sample_indices_] = True
+    labels = model.labels_
+    # Number of clusters in labels, ignoring noise if present.
+    n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
+    n_noise_ = list(labels).count(-1)
+    logging.info("Estimated number of clusters: %d", n_clusters_)
+    logging.info("Estimated number of noise points: %d", n_noise_)
+    for i in range(n_clusters_):
+        logging.info(
+            "Cluster %d, proportion: %d%%", i, cl_size[i] / len(responses) * 100
+        )
 
 
 @main.command()
