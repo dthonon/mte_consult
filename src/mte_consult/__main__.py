@@ -229,7 +229,7 @@ def _fr_nlp() -> spacy.language.Language:
     )
     logging.info(f"NLP pipeline: {_nlp.pipe_names}")
     # Adjust stopwords for this specific topic
-    _nlp.Defaults.stop_words |= {"y", "france", "esod"}
+    _nlp.Defaults.stop_words |= {"y", "france"}
     _nlp.Defaults.stop_words -= {"pour"}
     return _nlp
 
@@ -348,8 +348,9 @@ def cluster(ctx: click.Context) -> None:
     logging.info(f"Nombre de commentaires prétraités : {len(responses)}")
 
     logging.info("Vectorisation des textes")
+    stop = ["arrêté", "avis", "loup"]
     tfidf_vectorizer = TfidfVectorizer(
-        max_df=0.9, min_df=0.1, stop_words=None, use_idf=True, ngram_range=(1, 3)
+        max_df=0.99, min_df=0.1, stop_words=stop, use_idf=True, ngram_range=(2, 3)
     )
     # Fit vectoriser to NLP processed column
     tfidf_matrix = tfidf_vectorizer.fit_transform(responses.lemma)
@@ -361,7 +362,8 @@ def cluster(ctx: click.Context) -> None:
     model = KMeans(n_clusters=true_k, init="k-means++", max_iter=100, n_init=1)
     pred_labels = list(model.fit_predict(tfidf_matrix))
     logging.info("Résumé de clusterisation:")
-    true_labels = [0 if d == "Favorable" else 1 for d in responses.Opinion_estimée]
+    labels = ["Favorable", "Défavorable"]
+    true_labels = [0 if d == labels[0] else 1 for d in responses.Opinion_estimée]
     print(true_labels[:30])
     print(pred_labels[:30])
     print("Homogeneity: %0.3f" % metrics.homogeneity_score(true_labels, pred_labels))
@@ -371,7 +373,7 @@ def cluster(ctx: click.Context) -> None:
     cl_size = Counter(model.labels_)
     for i in range(true_k):
         logging.info(
-            f"Cluster {i}, proportion: {cl_size[i] / len(responses) * 100}%, top terms:"
+            f"Cluster {labels[i]}, proportion: {cl_size[i] / len(responses) * 100}%, top terms:"
         )
 
         top_t = ", ".join([terms[t] for t in order_centroids[i, :10]])
