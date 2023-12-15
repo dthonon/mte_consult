@@ -1,0 +1,61 @@
+{
+  "lang":"fr",
+  "name":"projet_arrete_tirs",
+  "version":"0.0.1",
+  "description":"",
+  "author":"",
+  "email":"",
+  "url":"",
+  "license":"",
+  "spacy_version":">=3.7.2,<3.8.0",
+  "spacy_git_version":"a89eae928",
+  "vectors":{
+    "width":0,
+    "vectors":0,
+    "keys":0,
+    "name":null
+  },
+  "labels":{
+    "textcat":[
+      "D\u00e9favorable",
+      "Favorable"
+    ]
+  },
+  "pipeline":[
+    "textcat"
+  ],
+  "components":[
+    "textcat"
+  ],
+  "disabled":[
+
+  ],
+  "performance":{
+    "cats_score":0.7939622642,
+    "cats_score_desc":"macro F",
+    "cats_micro_p":0.8205128205,
+    "cats_micro_r":0.8205128205,
+    "cats_micro_f":0.8205128205,
+    "cats_macro_p":0.8198051948,
+    "cats_macro_r":0.7814285714,
+    "cats_macro_f":0.7939622642,
+    "cats_macro_auc":0.8657142857,
+    "cats_f_per_type":{
+      "D\u00e9favorable":{
+        "p":0.8214285714,
+        "r":0.92,
+        "f":0.8679245283
+      },
+      "Favorable":{
+        "p":0.8181818182,
+        "r":0.6428571429,
+        "f":0.72
+      }
+    },
+    "cats_macro_auc_per_type":0.0,
+    "textcat_loss":0.0000013298
+  },
+  "requirements":[
+
+  ]
+}

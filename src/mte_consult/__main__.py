@@ -352,7 +352,7 @@ def cluster(ctx: click.Context) -> None:
     logging.info("Vectorisation des textes")
     stop = ["arrêté", "avis", "loup"]
     tfidf_vectorizer = TfidfVectorizer(
-        max_df=0.99, min_df=0.1, stop_words=stop, use_idf=True, ngram_range=(1, 3)
+        max_df=1.0, min_df=0.1, stop_words=stop, use_idf=True, ngram_range=(2, 3)
     )
     # Fit vectoriser to NLP processed column
     tfidf_matrix = tfidf_vectorizer.fit_transform(responses.lemma)
@@ -368,7 +368,8 @@ def cluster(ctx: click.Context) -> None:
     true_labels = [0 if d == labels[0] else 1 for d in responses.Opinion_estimée]
     print(true_labels[:30])
     print(pred_labels[:30])
-    logging.info("Homogénéité: {metrics.homogeneity_score(true_labels, pred_labels)}")
+    logging.info(f"Homogénéité: {metrics.homogeneity_score(true_labels, pred_labels)}")
+    logging.info(f"Rand index: {metrics.adjusted_rand_score(true_labels, pred_labels)}")
     logging.info(metrics.confusion_matrix(true_labels, pred_labels))
     order_centroids = model.cluster_centers_.argsort()[:, ::-1]
     terms = tfidf_vectorizer.get_feature_names_out()
