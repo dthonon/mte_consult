@@ -344,6 +344,8 @@ def cluster(ctx: click.Context) -> None:
     consultation = ctx.obj["CONSULTATION"]
     data_dir = ctx.obj["DATA_DIRECTORY"]
 
+    pd.set_option("display.max_colwidth", None)
+
     csv_file = Path(data_dir + "/processed/" + consultation + ".csv")
     logging.debug(f"Lecture de {csv_file}")
     responses = pd.read_csv(csv_file, header=0, sep=";")
@@ -352,7 +354,7 @@ def cluster(ctx: click.Context) -> None:
     logging.info("Vectorisation des textes")
     stop = ["arrêté", "avis", "loup"]
     tfidf_vectorizer = TfidfVectorizer(
-        max_df=1.0, min_df=0.1, stop_words=stop, use_idf=True, ngram_range=(2, 3)
+        max_df=1.0, min_df=0.1, stop_words=stop, use_idf=True, ngram_range=(1, 3)
     )
     # Fit vectoriser to NLP processed column
     tfidf_matrix = tfidf_vectorizer.fit_transform(responses.lemma)
@@ -362,15 +364,19 @@ def cluster(ctx: click.Context) -> None:
     logging.info("K-means clustering")
     true_k = 2
     model = KMeans(n_clusters=true_k, init="k-means++", max_iter=100, n_init=1)
-    pred_labels = list(model.fit_predict(tfidf_matrix))
     logging.info("Résumé de clusterisation:")
     labels = ["Favorable", "Défavorable"]
     true_labels = [0 if d == labels[0] else 1 for d in responses.Opinion_estimée]
-    print(true_labels[:30])
-    print(pred_labels[:30])
+    pred_labels = list(model.fit_predict(tfidf_matrix))
+    responses["pred_label"] = pred_labels
+    # print(responses[:10])
+    # print(true_labels[:30])
+    # print(pred_labels[:30])
     logging.info(f"Homogénéité: {metrics.homogeneity_score(true_labels, pred_labels)}")
     logging.info(f"Rand index: {metrics.adjusted_rand_score(true_labels, pred_labels)}")
-    logging.info(metrics.confusion_matrix(true_labels, pred_labels))
+    logging.info(
+        f"Confusion matrix :\n{metrics.confusion_matrix(true_labels, pred_labels)}"
+    )
     order_centroids = model.cluster_centers_.argsort()[:, ::-1]
     terms = tfidf_vectorizer.get_feature_names_out()
     cl_size = Counter(model.labels_)
@@ -379,8 +385,9 @@ def cluster(ctx: click.Context) -> None:
             f"Cluster {labels[i]}, proportion: {cl_size[i] / len(responses) * 100}%, top terms:"
         )
 
-        top_t = ", ".join([terms[t] for t in order_centroids[i, :10]])
+        top_t = ", ".join([terms[t] for t in order_centroids[i, :20]])
         logging.info(top_t)
+        print(responses.checked_text[responses["pred_label"] == i][:10])
 
     # DBSCAN clustering
     logging.info("DBSCAN clustering")
