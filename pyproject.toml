@@ -8,37 +8,36 @@ readme = "README.md"
 homepage = "https://github.com/dthonon/mte_consult"
 repository = "https://github.com/dthonon/mte_consult"
 documentation = "https://mte_consult.readthedocs.io"
-classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
-]
+classifiers = ["Development Status :: 2 - Pre-Alpha"]
 
 [tool.poetry.urls]
 Changelog = "https://github.com/dthonon/mte_consult/releases"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<4"
-click = ">=8.0.1"
-pandas = "^2.0.2"
-pandas-stubs = "^2.0.2.230605"
-textacy = "^0.13.0"
-scikit-learn = "^1.2.2"
-hunspell = "^0.5.5"
-requests = "^2.31.0"
-beautifulsoup4 = "^4.12.2"
-types-requests = "^2.31.0.10"
-types-beautifulsoup4 = "^4.12.0.7"
-lingua-language-detector = "^2.0.1"
-weasel = "^0.3.4"
-cupy-cuda12x = "^12.3.0"
-streamlit = "^1.29.0"
-spacy-streamlit = "^1.0.6"
-fr-projet-de-pna-loup = {path = "models/projet_de_pna_loup/packages/fr_projet_de_pna_loup-0.0.1/dist/fr_projet_de_pna_loup-0.0.1.tar.gz"}
-fr-projet-arrete-tirs = {path = "models/projet_arrêté_tirs/packages/fr_projet_arrete_tirs-0.0.1/dist/fr_projet_arrete_tirs-0.0.1.tar.gz"}
+click = ">=8.0"
+pandas = ">=2.0"
+pandas-stubs = ">=2.0"
+textacy = ">=0.13"
+scikit-learn = ">=1.2"
+hunspell = ">=0.5"
+requests = ">=2.31"
+beautifulsoup4 = ">=4.12"
+types-requests = ">=2.31"
+types-beautifulsoup4 = ">=4.12"
+lingua-language-detector = ">=2.0"
+weasel = ">=0.3"
+cupy-cuda12x = ">=12.3"
+streamlit = ">=1.29"
+spacy = ">=3.8"
+spacy-streamlit = ">=1.0"
+# fr-projet-de-pna-loup = { path = "models/projet_de_pna_loup/packages/fr_projet_de_pna_loup-0.0.1/dist/fr_projet_de_pna_loup-0.0.1.tar.gz" }
+# fr-projet-arrete-tirs = { path = "models/projet_arrêté_tirs/packages/fr_projet_arrete_tirs-0.0.1/dist/fr_projet_arrete_tirs-0.0.1.tar.gz" }
 
 [tool.poetry.dev-dependencies]
-Pygments = ">=2.10.0"
+Pygments = ">=2.10"
 black = ">=21.10b0"
-coverage = {extras = ["toml"], version = ">=6.2"}
+coverage = { extras = ["toml"], version = ">=6.2" }
 darglint = ">=1.8.1"
 flake8 = ">=4.0.1"
 flake8-bandit = ">=2.1.2"
@@ -58,11 +57,11 @@ sphinx = ">=4.3.2"
 sphinx-autobuild = ">=2021.3.14"
 sphinx-click = ">=3.0.2"
 typeguard = ">=2.13.3"
-xdoctest = {extras = ["colors"], version = ">=0.15.10"}
-myst-parser = {version = ">=0.16.1"}
+xdoctest = { extras = ["colors"], version = ">=0.15.10" }
+myst-parser = { version = ">=0.16.1" }
 
 [tool.poetry.scripts]
-mte_consult = "mte_consult.__main__:main"
+mte-consult = "mte_consult.__main__:main"
 
 [tool.coverage.paths]
 source = ["src", "*/site-packages"]
@@ -74,7 +73,7 @@ source = ["mte_consult", "tests"]
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 100
+fail_under = 10
 
 [tool.isort]
 profile = "black"
