@@ -1,4 +1,5 @@
 """Command-line interface."""
+
 import logging
 import random
 import re
@@ -9,9 +10,7 @@ from functools import partial
 # import unicodedata
 from pathlib import Path
 from typing import Any
-from typing import List
-from typing import Set
-from typing import Tuple
+
 
 import click
 import hunspell  # type: ignore
@@ -27,7 +26,6 @@ from sklearn.cluster import DBSCAN
 from sklearn.cluster import KMeans
 from sklearn.feature_extraction.text import TfidfVectorizer
 from spacy.tokenizer import Tokenizer
-from spacy.tokens import DocBin
 from textacy import preprocessing
 
 
@@ -43,12 +41,12 @@ logging.basicConfig(
 @click.group()
 @click.option(
     "--data_directory",
-    default=".",
+    default="data",
     help="Répertoire contenant les répertoires de données raw, preprocessed ...",
 )
 @click.option(
     "--domain",
-    default=".",
+    default="consultations-publiques.developpement-durable.gouv.fr",
     help="Base de l'URL du site",
 )
 @click.option(
