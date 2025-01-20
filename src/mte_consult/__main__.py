@@ -170,7 +170,7 @@ def retrieve(ctx: click.Context) -> None:
                     )
                     responses = pd.concat([c, responses.loc[:]]).reset_index(drop=True)
                 # Suppression des ligne dupliquées et sauvegarde
-                responses = responses.drop_duplicates(subset=["sujet"])
+                responses = responses.drop_duplicates()
                 logging.info(
                     f"Nb de nouveaux commentaires : {len(responses) - pre_drop}/{len(commentaires)}, total : {len(responses)}/{max_com}"
                 )
