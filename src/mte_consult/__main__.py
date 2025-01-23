@@ -141,7 +141,9 @@ def retrieve(ctx: click.Context) -> None:
 
                 nb_com = re.match(
                     nb_com_re,
-                    contenu.select_one("div.dateart").text.strip().replace("\n", ""),
+                    " ".join(
+                        contenu.select_one("div.dateart").text.strip().splitlines()
+                    ),
                 )
                 if int(nb_com.group(2)) > 0 and max_com != int(nb_com.group(2)):
                     max_com = int(nb_com.group(2))
@@ -161,10 +163,16 @@ def retrieve(ctx: click.Context) -> None:
                 for com in commentaires:
                     c = pd.DataFrame(
                         {
-                            "sujet": com.select_one("div.titresujet").text.strip(),
-                            "texte": com.select_one("div.textesujet")
-                            .text.strip()
-                            .replace("\n", " "),
+                            "titre": " ".join(
+                                com.select_one("div.titresujet")
+                                .text.strip()
+                                .splitlines()
+                            ),
+                            "texte": " ".join(
+                                com.select_one("div.textesujet")
+                                .text.strip()
+                                .splitlines()
+                            ),
                         },
                         index=[0],
                     )
