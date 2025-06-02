@@ -1,6 +1,7 @@
 1er
 1ers
 1re
+15aine
 20ème
 2nd
 21e
@@ -19,6 +20,8 @@ anthropocentrée
 anthropocentrés
 APN
 APNE
+asin
+asins
 ASPAS
 Bambi
 bête
@@ -27,6 +30,7 @@ biofence
 bla
 Boitani
 Borrelia
+boutiste
 Brioude
 canis
 CDCFS
@@ -35,6 +39,7 @@ CERPAM
 CGAAER
 CGEDD
 ChatGPT
+CJUE
 CNCFS
 CNPN
 cohabitation
@@ -59,7 +64,9 @@ déchaînés
 dédommageables
 Descola
 dissiminateurs
+DREAL
 DSP
+Duplomb
 éco
 éco-système
 éco-systèmes
@@ -69,6 +76,7 @@ EMAIL
 ERC
 ESOD
 éthologue
+fake
 familiaris
 FDC
 FDSEA
@@ -90,6 +98,7 @@ galinettes
 Garrulus
 garrulus
 GB
+Genevard
 géodiversité
 Ghandi
 glandarius
@@ -111,6 +120,7 @@ kangals
 km²
 km/h
 Léon
+LIFE
 lobbies
 LPO
 Luidgi
@@ -134,12 +144,15 @@ Mustela
 mustela
 Natura
 Nemrod
+nemrods
 nivalis
+non-protégeables
 OFB
 Oksana
 One
 ONCFS
 ONF
+OPPAL
 PAC
 pastoraloup
 Pastoraloup
@@ -163,6 +176,7 @@ Schraen
 sentients
 SFEPM
 SHF
+SNB
 SNPN
 SNU
 socioécologiques
@@ -176,6 +190,7 @@ Sutherland
 SVP
 Talkie
 Tchernobyl
+technico
 thymallus
 UICN
 Valberg
@@ -189,7 +204,7 @@ Vulpes
 vulpes
 vulpine
 walkie
-Wolfalp
+Wolfalps
 wokisme
 WWF
 XXème
