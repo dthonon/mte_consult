@@ -11,7 +11,6 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-
 import click
 import hunspell  # type: ignore
 import numpy as np
@@ -21,11 +20,11 @@ import spacy
 from bs4 import BeautifulSoup
 from lingua import Language
 from lingua import LanguageDetectorBuilder
-from sklearn import metrics
-from sklearn.cluster import DBSCAN
+from sklearn import metrics  # type: ignore
+from sklearn.cluster import DBSCAN  # type: ignore
 from sklearn.cluster import KMeans
-from sklearn.feature_extraction.text import TfidfVectorizer
-from spacy.tokenizer import Tokenizer
+from sklearn.feature_extraction.text import TfidfVectorizer  # type: ignore
+from spacy.tokenizer import Tokenizer  # type: ignore
 from textacy import preprocessing
 
 
@@ -103,14 +102,14 @@ def retrieve(ctx: click.Context) -> None:
         logging.debug(f"Lecture des téléchargements depuis {csv_file}")
         responses = pd.read_csv(csv_file, header=0, sep=";")
     else:
-        logging.debug(f"Pas de téléchargement précédents")
+        logging.debug("Pas de téléchargement précédents")
         responses = pd.DataFrame()
     logging.info(f"Nombre de commentaires déjà téléchargés : {len(responses)}")
 
     # Récupération des pages de commentaire
     url = "https://www." + domain + "/" + consultation + ".html"
     nb_com_re = re.compile(r"(Consultation.* )(\d+) contributions")
-    forum_re = re.compile(r'<strong class="on">(\d+)</strong>')
+    forum_re = re.compile(r".*>(\d+)</a>")
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         + "(KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
@@ -149,8 +148,18 @@ def retrieve(ctx: click.Context) -> None:
                     max_com = int(nb_com.group(2))
                     logging.info(f"Nombre total de commentaires {max_com}")
 
-                forum = re.match(forum_re, str(contenu.find("strong", "on")))
-                rec = int(forum.group(1))
+                forum = re.match(
+                    forum_re,
+                    str(
+                        contenu.find(
+                            "a",
+                            class_="fr-pagination__link",
+                            attrs={"aria-current": "page"},
+                        )
+                    ),
+                )
+
+                rec = (int(forum.group(1)) - 1) * 20
                 # La page reçue est retirée de la liste
                 if rec in pages:
                     pages.remove(rec)
@@ -256,7 +265,7 @@ def preprocess(ctx: click.Context) -> None:
     consultation = ctx.obj["CONSULTATION"]
     data_dir = ctx.obj["DATA_DIRECTORY"]
 
-    languages = [Language.ENGLISH, Language.FRENCH]
+    languages = [Language.ENGLISH, Language.FRENCH, Language.GERMAN]
     detector = (
         LanguageDetectorBuilder.from_languages(*languages)
         # .with_minimum_relative_distance(0.99)
@@ -266,7 +275,7 @@ def preprocess(ctx: click.Context) -> None:
     logging.info(f"Prétraitement de {consultation} dans {data_dir}")
     csv_file = Path(data_dir + "/raw/" + consultation + ".csv")
     logging.debug("Lecture %s", csv_file)
-    responses = pd.read_csv(csv_file, header=0, sep=";")
+    responses = pd.read_csv(csv_file, header=0, sep=";", names=["sujet", "texte"])
     logging.info(f"Nombre de commentaires bruts : {len(responses)}")
 
     # Découpe du sujet en éléments
@@ -283,11 +292,11 @@ def preprocess(ctx: click.Context) -> None:
         f"Commentaires restants après déduplication du texte: {len(responses)}"
     )
 
-    # Suppression du texte anglais
+    # Suppression du texte étranger
     lang = responses["texte"].apply(lambda d: detector.detect_language_of(d))
     pd.set_option("display.max_colwidth", None)
     for t in responses.texte[lang != Language.FRENCH]:
-        logging.debug(f"Langue {detector.detect_language_of(t)} : {t}")
+        logging.info(f"Langue {detector.detect_language_of(t)} : {t}")
         confidence_values = detector.compute_language_confidence_values(t)
         for confidence in confidence_values:
             logging.debug(f"{confidence.language.name}: {confidence.value:.2f}")
@@ -304,7 +313,10 @@ def preprocess(ctx: click.Context) -> None:
     responses.raw_text = responses.raw_text.str.replace(r"\r", " ", regex=True)
     responses.raw_text = responses.raw_text.str.replace("+", " plus ")
     responses.raw_text = responses.raw_text.str.replace("*", " fois ")
+    responses.raw_text = responses.raw_text.str.replace("grd", "grand")
     responses.raw_text = responses.raw_text.str.replace("qq", "quelque")
+    responses.raw_text = responses.raw_text.str.replace("qlqs", "quelques")
+    responses.raw_text = responses.raw_text.str.replace(".euses", "")
     responses.raw_text = responses.raw_text.str.replace("(", " (")
     responses.raw_text = responses.raw_text.str.replace(")", " )")
     responses.raw_text = responses.raw_text.str.replace(r"\s+", " ", regex=True)
