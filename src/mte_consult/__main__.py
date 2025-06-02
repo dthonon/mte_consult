@@ -24,6 +24,9 @@ from sklearn import metrics  # type: ignore
 from sklearn.cluster import DBSCAN  # type: ignore
 from sklearn.cluster import KMeans
 from sklearn.feature_extraction.text import TfidfVectorizer  # type: ignore
+from sklearn.linear_model import LogisticRegression  # type: ignore
+from sklearn.model_selection import train_test_split  # type: ignore
+from sklearn.pipeline import Pipeline  # type: ignore
 from spacy.tokenizer import Tokenizer  # type: ignore
 from textacy import preprocessing
 
@@ -441,19 +444,77 @@ def classify(ctx: click.Context) -> None:
         f"Lecture de {len(responses)} commentaires prétraités depuis {csv_file}"
     )
 
-    nlp = spacy.load("fr_projet_arrete_tirs")
-    for index, line in responses.iterrows():
-        t = line["checked_text"]
-        if isinstance(t, str) and len(t) > 10:
-            doc = nlp(t)
-            responses.at[index, "Opinion_estimée"] = (
-                "Favorable" if doc.cats["Favorable"] > 0.5 else "Défavorable"
-            )
-            responses.at[index, "Favorable"] = doc.cats["Favorable"]
-            responses.at[index, "Défavorable"] = doc.cats["Défavorable"]
+    # Lecture des commentaires annotés
+    csv_file = Path(data_dir + "/external/" + consultation + "_annotated.csv")
+    if csv_file.is_file():
+        logging.info(f"Lecture des commentaires annotés depuis {csv_file}")
+        annotated = pd.read_csv(csv_file, header=0, sep=";")
+        annotated = annotated.dropna(subset=["opinion"])
+        logging.info(f"Nombre de commentaires annotés : {len(annotated)}")
+        logging.info(
+            f"Nombre de commentaires favorables : {len(annotated[annotated.opinion == 'Favorable'])}"
+        )
+        logging.info(
+            f"Nombre de commentaires défavorables : {len(annotated[annotated.opinion == 'Défavorable'])}"
+        )
+        logging.info(
+            f"Nombre de commentaires neutres : {len(annotated[annotated.opinion == 'Neutre'])}"
+        )
+    else:
+        logging.warning(f"Pas de fichier annoté {csv_file}")
 
-    print(responses["Opinion_estimée"].describe())
+    # Création du modèle de classification
+    logging.info("Création du modèle de classification")
+    logging.info("Vectorisation des textes")
+    stop = ["arrêté", "avis", "loup"]
+    tfidf_vectorizer = TfidfVectorizer(
+        max_df=1.0, min_df=0.1, stop_words=stop, use_idf=True, ngram_range=(1, 3)
+    )
+    # Fit vectoriser to NLP processed column
+    tfidf_matrix = tfidf_vectorizer.fit_transform(responses.lemma)
+    logging.info(f"TF-IDF (n_samples, n_features): {tfidf_matrix.shape}")
 
+    # Séparation des données en train et test
+    logging.info("Séparation des données en train et test")
+    x_train, x_test, y_train, y_test = train_test_split(
+        annotated.lemma, annotated.opinion, test_size=0.2, random_state=42
+    )
+    logging.info(f"Train set size: {len(x_train)}, Test set size: {len(x_test)}")
+
+    # Entraînement du modèle
+    logging.info("Entraînement du modèle de classification")
+    classifier = LogisticRegression()
+    # Create pipeline using Bag of Words
+    pipe = Pipeline(
+        [
+            ("vectorizer", tfidf_vectorizer),
+            ("classifier", classifier),
+        ]
+    )
+    # Entraînement du modèle
+    logging.info("Entraînement du modèle de classification")
+    pipe.fit(x_train, y_train)
+    logging.info("Modèle entraîné")
+    # Prédiction sur le jeu de test
+    logging.info("Prédiction sur le jeu de test")
+    y_pred = pipe.predict(x_test)
+    logging.info(f"Accuracy du modèle : {metrics.accuracy_score(y_test, y_pred)}")
+    logging.info(
+        f"Confusion matrix :\n{metrics.confusion_matrix(y_test, y_pred, labels=['Favorable', 'Défavorable'])}"
+    )
+
+    # Prédiction sur l'ensemble des commentaires
+    logging.info("Prédiction sur l'ensemble des commentaires")
+    responses["Opinion_estimée"] = pipe.predict(responses.lemma)
+    logging.info(
+        f"Nombre de commentaires favorables : {len(responses[responses.Opinion_estimée == 'Favorable'])}"
+    )
+    logging.info(
+        f"Nombre de commentaires défavorables : {len(responses[responses.Opinion_estimée == 'Défavorable'])}"
+    )
+    logging.info(
+        f"Nombre de commentaires neutres : {len(responses[responses.Opinion_estimée == 'Neutre'])}"
+    )
     # Ecriture du fichier résultant
     csv_file = Path(data_dir + "/processed/" + consultation + ".csv")
     logging.info(f"Ecriture dans {csv_file}")
