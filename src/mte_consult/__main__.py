@@ -30,6 +30,9 @@ from sklearn.pipeline import Pipeline  # type: ignore
 from spacy.tokenizer import Tokenizer  # type: ignore
 from textacy import preprocessing
 
+# Constantes
+NB_COMMENTS = 20  # Nombre de commentaires par page
+NB_COMMENTS_MAX = 1000000  # Nombre maximum de commentaires à télécharger
 
 # Spell checking word counter (global)
 nb_words = 0
@@ -122,16 +125,19 @@ def retrieve(ctx: click.Context) -> None:
     }
 
     # Création de la liste des pages à télécharger
-    pages = [i for i in range(start_comment, end_comment, 20)]
+    pages = [i for i in range(start_comment, end_comment, NB_COMMENTS)]
     pages = pages[: nb_pages + 1]
-    max_com = 1000000
+    max_com = NB_COMMENTS_MAX
 
     while len(pages) > 0:
         # La liste est mélangée pour éviter de boucler sur une page en erreur transitoire
         random.shuffle(pages)
         npage = pages[0]
         if npage < max_com:
-            payload = {"lang": "fr", "debut_forums": str(npage)}
+            if npage == 0:
+                payload = {"lang": "fr"}
+            else:
+                payload = {"lang": "fr", "debut_forums": str(npage)}
             logging.info(f"Téléchargement depuis {url}, params : {payload}")
             try:
                 page = requests.get(url, params=payload, timeout=10, headers=headers)
@@ -162,7 +168,7 @@ def retrieve(ctx: click.Context) -> None:
                     ),
                 )
 
-                rec = (int(forum.group(1)) - 1) * 20
+                rec = (int(forum.group(1)) - 1) * NB_COMMENTS
                 # La page reçue est retirée de la liste
                 if rec in pages:
                     pages.remove(rec)
@@ -477,7 +483,7 @@ def classify(ctx: click.Context) -> None:
     # Séparation des données en train et test
     logging.info("Séparation des données en train et test")
     x_train, x_test, y_train, y_test = train_test_split(
-        annotated.lemma, annotated.opinion, test_size=0.2, random_state=42
+        annotated.lemma, annotated.opinion, test_size=0.2
     )
     logging.info(f"Train set size: {len(x_train)}, Test set size: {len(x_test)}")
 
