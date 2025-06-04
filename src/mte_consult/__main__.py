@@ -1,5 +1,6 @@
 """Command-line interface."""
 
+import locale
 import logging
 import random
 import re
@@ -29,6 +30,7 @@ from sklearn.model_selection import train_test_split  # type: ignore
 from sklearn.pipeline import Pipeline  # type: ignore
 from spacy.tokenizer import Tokenizer  # type: ignore
 from textacy import preprocessing
+
 
 # Constantes
 NB_COMMENTS = 20  # Nombre de commentaires par page
@@ -214,7 +216,7 @@ def retrieve(ctx: click.Context) -> None:
                 time.sleep(10)
 
 
-def _spell_correction(doc: Tokenizer, spell: Any) -> str:
+def _spell_correction(doc: Tokenizer, spell: Any, corrected: pd.DataFrame) -> str:
     """Spell correction of misspelled words."""
     global nb_words
     nb_words += 1
@@ -232,7 +234,11 @@ def _spell_correction(doc: Tokenizer, spell: Any) -> str:
             sp = spell.suggest(word)
             if len(sp) > 0:
                 rep = sp[0]
-                print(word + " => " + rep)
+                corrected.loc[len(corrected)] = {
+                    "raw_text": word,
+                    "checked_text": rep,
+                }
+                # print(word + " => " + rep)
                 text += rep + d.whitespace_
             else:
                 logging.warning(f"Unable to correct {word}")
@@ -288,17 +294,19 @@ def preprocess(ctx: click.Context) -> None:
     logging.info(f"Nombre de commentaires bruts : {len(responses)}")
 
     # Découpe du sujet en éléments
-    responses[["titre", "date", "heure"]] = responses.sujet.str.extract(
-        "(.*), le (.*) à (.*)", expand=True
+    responses[["titre", "dateheure"]] = responses.sujet.str.extract(
+        "(.*), le (.* à .*)", expand=True
     )
-    responses = responses[["titre", "date", "heure", "texte", "sujet"]].sort_values(
-        by="date", ignore_index=True
+    responses = responses[["titre", "dateheure", "texte", "sujet"]]
+    locale.setlocale(locale.LC_TIME, "fr_FR.UTF-8")
+    responses["dateheure"] = pd.to_datetime(
+        responses["dateheure"], format="%d %B %Y à %Hh%M", errors="coerce"
     )
 
-    # Suppression des ligne dupliquéest
-    responses = responses.drop_duplicates(subset=["texte"])
+    # Suppression des ligne dupliquées
+    responses = responses.drop_duplicates(subset=["titre", "texte"])
     logging.info(
-        f"Commentaires restants après déduplication du texte: {len(responses)}"
+        f"Commentaires restants après déduplication du titre et du texte: {len(responses)}"
     )
 
     # Suppression du texte étranger
@@ -314,8 +322,8 @@ def preprocess(ctx: click.Context) -> None:
 
     # Fusion en une colonne pour traitement du texte
     responses["raw_text"] = responses["titre"] + ". " + responses["texte"]
-    responses["raw_text"].fillna(value="?", inplace=True)
-    responses = responses.drop(columns=["texte"])
+    responses["raw_text"] = responses["raw_text"].fillna(value="?")
+    # responses = responses.drop(columns=["texte"])
 
     # Nettoyage du texte brut
     logging.info("Nettoyage du texte brut")
@@ -350,18 +358,32 @@ def preprocess(ctx: click.Context) -> None:
         "/usr/share/hunspell/fr_FR.dic", "/usr/share/hunspell/fr_FR.aff"
     )
     added_words = Path(data_dir + "/external/" + "mtes.txt")
-    spell.add_dic(added_words)
+    if added_words.is_file():
+        spell.add_dic(added_words)
+    corrected = pd.DataFrame(columns=["raw_text", "checked_text"])
     nlp = _fr_nlp()
     tokenizer = nlp.tokenizer
     responses["checked_text"] = responses["raw_text"].apply(
-        lambda d: _spell_correction(tokenizer(d), spell)
+        lambda d: _spell_correction(tokenizer(d), spell, corrected)
     )
+    corrected = corrected.drop_duplicates(
+        subset=["raw_text", "checked_text"]
+    ).sort_values(by="raw_text")
+    logging.info(f"Nombre de mots corrigés : {len(corrected)}")
+
+    # Lemmatisation des commentaires
+    logging.info("Lemmatisation des commentaires")
     responses["lemma"] = responses["checked_text"].apply(lambda d: _lemmatize(nlp(d)))
+
+    # Ecriture du fichier des corrections orthographiques
+    csv_file = Path(data_dir + "/preprocessed/" + consultation + "_corrected.csv")
+    logging.debug(f"Ecriture dans {csv_file}")
+    corrected.to_csv(csv_file, header=True, sep=";", index=False)
 
     # Ecriture du fichier résultant
     csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
     logging.debug(f"Ecriture dans {csv_file}")
-    responses.sort_values(by=["date"]).to_csv(
+    responses.sort_values(by="dateheure", ignore_index=True).to_csv(
         csv_file, header=True, sep=";", index=False
     )
 
@@ -485,7 +507,7 @@ def classify(ctx: click.Context) -> None:
     # Séparation des données en train et test
     logging.info("Séparation des données en train et test")
     x_train, x_test, y_train, y_test = train_test_split(
-        annotated.lemma, annotated.opinion, test_size=0.2
+        annotated.lemma, annotated.opinion, test_size=0.3
     )
     logging.info(f"Train set size: {len(x_train)}, Test set size: {len(x_test)}")
 
