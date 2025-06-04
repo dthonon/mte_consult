@@ -361,7 +361,9 @@ def preprocess(ctx: click.Context) -> None:
     # Ecriture du fichier résultant
     csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
     logging.debug(f"Ecriture dans {csv_file}")
-    responses.to_csv(csv_file, header=True, sep=";", index=False)
+    responses.sort_values(by=["date"]).to_csv(
+        csv_file, header=True, sep=";", index=False
+    )
 
 
 @main.command()
