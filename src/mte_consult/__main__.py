@@ -338,7 +338,9 @@ def preprocess(ctx: click.Context) -> None:
     responses.raw_text = responses.raw_text.str.replace(")", " )")
     responses.raw_text = responses.raw_text.str.replace(r"\s+", " ", regex=True)
     responses.raw_text = responses.raw_text.str.replace(r"[_%=/°]", " ", regex=True)
-    responses.raw_text = responses.raw_text.str.replace(r"\d\dh\d\d", "", regex=True)
+    responses.raw_text = responses.raw_text.str.replace(
+        r"\d?\dh\d\d", "HEURE", regex=True
+    )
     preproc = preprocessing.pipeline.make_pipeline(
         preprocessing.normalize.bullet_points,
         preprocessing.normalize.hyphenated_words,
@@ -461,6 +463,87 @@ def cluster(ctx: click.Context) -> None:
 
 @main.command()
 @click.pass_context
+def pretrain(ctx: click.Context) -> None:
+    """Préparation des fichiers d'entrainement annotés."""
+    consultation = ctx.obj["CONSULTATION"]
+    data_dir = ctx.obj["DATA_DIRECTORY"]
+
+    # Lecture des commentaires
+    csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
+    if csv_file:
+        responses = pd.read_csv(csv_file, header=0, sep=";")
+        logging.info(
+            f"Lecture de {len(responses)} commentaires prétraités depuis {csv_file}"
+        )
+    else:
+        logging.error(f"Fichier {csv_file} non trouvé")
+        return
+
+    # Ajout de la colonne opinion
+    if "opinion" not in responses.columns:
+        logging.info("Ajout de la colonne opinion")
+        responses["opinion"] = ""
+    # Découpage selon l'avis exprimé
+    # Suppression des commentaires sans avis
+    avis_inconnu = responses.raw_text.apply(
+        lambda d: not (
+            "avis favorable" in str(d).lower()
+            or "avis très favorable" in str(d).lower()
+            or "avis défavorable" in str(d).lower()
+            or "avis très défavorable" in str(d).lower()
+        )
+    )
+    logging.info(f"Nombre de commentaires sans avis : {len(responses[avis_inconnu])}")
+    # Sauve les commentaires sans avis dans un fichier
+    csv_file = Path(data_dir + "/preprocessed/" + consultation + "_avis_inconnu.csv")
+    logging.info(f"Sauvegarde des commentaires sans avis dans {csv_file}")
+    responses[avis_inconnu].to_csv(csv_file, header=True, sep=";", index=False)
+    # Ecriture du fichier résultant
+    # Suppression des commentaires sans avis
+    responses = responses[~avis_inconnu].reset_index(drop=True)
+    logging.info(
+        f"Nombre de commentaires restants : {len(responses)} (avis favorable ou défavorable)"
+    )
+
+    # Séparation des commentaires favorables et défavorables
+    avis_favorable = responses.raw_text.apply(
+        lambda d: "avis favorable" in str(d).lower()
+        or "avis très favorable" in str(d).lower()
+    )
+    logging.info(
+        f"Nombre de commentaires avec avis favorable : {len(responses[avis_favorable])}"
+    )
+    responses.loc[avis_favorable, "opinion"] = "Favorable"
+
+    # Sauve les commentaires favorables dans un fichier
+    csv_file = Path(data_dir + "/preprocessed/" + consultation + "_avis_favorable.csv")
+    logging.info(f"Sauvegarde des commentaires favorables dans {csv_file}")
+    responses[avis_favorable].to_csv(csv_file, header=True, sep=";", index=False)
+    # Suppression des commentaires favorables
+    responses = responses[~avis_favorable].reset_index(drop=True)
+    logging.info(
+        f"Nombre de commentaires restants : {len(responses)} (avis défavorable)"
+    )
+
+    avis_defavorable = responses.raw_text.apply(
+        lambda d: "avis défavorable" in str(d).lower()
+        or "avis très défavorable" in str(d).lower()
+    )
+    responses.loc[avis_defavorable, "opinion"] = "Défavorable"
+
+    # Sauve les commentaires défavorables dans un fichier
+    logging.info(
+        f"Nombre de commentaires avec avis défavorable : {len(responses[avis_defavorable])}"
+    )
+    csv_file = Path(
+        data_dir + "/preprocessed/" + consultation + "_avis_defavorable.csv"
+    )
+    logging.info(f"Sauvegarde des commentaires défavorables dans {csv_file}")
+    responses[avis_defavorable].to_csv(csv_file, header=True, sep=";", index=False)
+
+
+@main.command()
+@click.pass_context
 def classify(ctx: click.Context) -> None:
     """Classification des commentaires."""
     logging.info("Classification des commentaires")
@@ -475,30 +558,55 @@ def classify(ctx: click.Context) -> None:
     )
 
     # Lecture des commentaires annotés
-    csv_file = Path(data_dir + "/external/" + consultation + "_annotated.csv")
+    csv_file = Path(data_dir + "/preprocessed/" + consultation + "_avis_favorable.csv")
+    if csv_file.is_file():
+        logging.info(f"Lecture des commentaires favorables depuis {csv_file}")
+        favorable = pd.read_csv(csv_file, header=0, sep=";")
+    else:
+        logging.warning(f"Pas de fichier annoté {csv_file}")
+    csv_file = Path(
+        data_dir + "/preprocessed/" + consultation + "_avis_defavorable.csv"
+    )
+    if csv_file.is_file():
+        logging.info(f"Lecture des commentaires favorables depuis {csv_file}")
+        defavorable = pd.read_csv(csv_file, header=0, sep=";")
+    else:
+        logging.warning(f"Pas de fichier annoté {csv_file}")
+
+    csv_file = Path(data_dir + "/preprocessed/" + consultation + "_annotated.csv")
     if csv_file.is_file():
         logging.info(f"Lecture des commentaires annotés depuis {csv_file}")
         annotated = pd.read_csv(csv_file, header=0, sep=";")
         annotated = annotated.dropna(subset=["opinion"])
-        logging.info(f"Nombre de commentaires annotés : {len(annotated)}")
-        logging.info(
-            f"Nombre de commentaires favorables : {len(annotated[annotated.opinion == 'Favorable'])}"
-        )
-        logging.info(
-            f"Nombre de commentaires défavorables : {len(annotated[annotated.opinion == 'Défavorable'])}"
-        )
-        logging.info(
-            f"Nombre de commentaires neutres : {len(annotated[annotated.opinion == 'Neutre'])}"
-        )
     else:
         logging.warning(f"Pas de fichier annoté {csv_file}")
+    # Concaténation des commentaires annotés
+    annotated = pd.concat([favorable, defavorable, annotated], ignore_index=True)
+
+    logging.info(f"Nombre de commentaires annotés : {len(annotated)}")
+    logging.info(
+        f"Nombre de commentaires favorables : {len(annotated[annotated.opinion == 'Favorable'])}"
+    )
+    logging.info(
+        f"Nombre de commentaires défavorables : {len(annotated[annotated.opinion == 'Défavorable'])}"
+    )
+    logging.info(
+        f"Nombre de commentaires neutres : {len(annotated[annotated.opinion == 'Neutre'])}"
+    )
 
     # Création du modèle de classification
     logging.info("Création du modèle de classification")
     logging.info("Vectorisation des textes")
-    stop = ["arrêté", "avis", "loup"]
+    print(responses[responses.lemma.isna()])
+    responses.lemma = responses.lemma.fillna(value="Neutre")
+    stop = ["arrêté", "avis"]
     tfidf_vectorizer = TfidfVectorizer(
-        max_df=1.0, min_df=0.1, stop_words=stop, use_idf=True, ngram_range=(1, 3)
+        decode_error="ignore",  # Ignore decoding errors
+        max_df=1.0,
+        min_df=0.1,
+        stop_words=stop,
+        use_idf=True,
+        ngram_range=(1, 3),
     )
     # Fit vectoriser to NLP processed column
     tfidf_matrix = tfidf_vectorizer.fit_transform(responses.lemma)
@@ -522,9 +630,7 @@ def classify(ctx: click.Context) -> None:
         ]
     )
     # Entraînement du modèle
-    logging.info("Entraînement du modèle de classification")
     pipe.fit(x_train, y_train)
-    logging.info("Modèle entraîné")
     # Prédiction sur le jeu de test
     logging.info("Prédiction sur le jeu de test")
     y_pred = pipe.predict(x_test)
