@@ -29,6 +29,7 @@ from sklearn.linear_model import LogisticRegression  # type: ignore
 from sklearn.model_selection import train_test_split  # type: ignore
 from sklearn.pipeline import Pipeline  # type: ignore
 from spacy.tokenizer import Tokenizer  # type: ignore
+from spellchecker import SpellChecker
 from textacy import preprocessing
 
 
@@ -37,7 +38,7 @@ NB_COMMENTS = 20  # Nombre de commentaires par page
 NB_COMMENTS_MAX = 1000000  # Nombre maximum de commentaires à télécharger
 
 # Spell checking word counter (global)
-nb_words = 0
+nb_comm = 0
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -217,11 +218,11 @@ def retrieve(ctx: click.Context) -> None:
 
 
 def _spell_correction(doc: Tokenizer, spell: Any, corrected: pd.DataFrame) -> str:
-    """Spell correction of misspelled words."""
-    global nb_words
-    nb_words += 1
-    if (nb_words % 100) == 0:
-        logging.info(f"Vérification orthographique de {nb_words} mots")
+    """Spell correction of misspelled words, hunspell version."""
+    global nb_comm
+    nb_comm += 1
+    if (nb_comm % 100) == 0:
+        logging.info(f"Vérification orthographique de {nb_comm} commentaires")
     text = ""
     for d in doc:
         word = d.text
@@ -240,6 +241,34 @@ def _spell_correction(doc: Tokenizer, spell: Any, corrected: pd.DataFrame) -> st
                 }
                 # print(word + " => " + rep)
                 text += rep + d.whitespace_
+            else:
+                logging.warning(f"Unable to correct {word}")
+                text += d.text_with_ws
+    return text
+
+
+def _spell_correction2(doc: Tokenizer, spell: Any, corrected: pd.DataFrame) -> str:
+    """Spell correction of misspelled words, pyspellchecker version."""
+    global nb_comm
+    nb_comm += 1
+    if (nb_comm % 100) == 0:
+        logging.info(f"Vérification orthographique de {nb_comm} commentaires")
+    text = ""
+    for d in doc:
+        word = d.text
+        # Spell check meaningfull words only
+        if d.is_space:
+            pass  # Nothing to check
+        elif d.is_stop or d.is_punct or word in spell:
+            text += d.text_with_ws
+        else:
+            sp = spell.correction(word)
+            if sp is not None:
+                corrected.loc[len(corrected)] = {
+                    "raw_text": word,
+                    "checked_text": sp,
+                }
+                text += sp + d.whitespace_
             else:
                 logging.warning(f"Unable to correct {word}")
                 text += d.text_with_ws
@@ -266,7 +295,7 @@ def _fr_nlp() -> spacy.language.Language:
     return _nlp
 
 
-def _lemmatize(doc) -> str:
+def _lemmatize(doc: Tokenizer) -> str:
     # Take the `token.lemma_` of each non-stop word
     return " ".join(
         [token.lemma_ for token in doc if not (token.is_stop or token.is_punct)]
@@ -309,10 +338,15 @@ def preprocess(ctx: click.Context) -> None:
         f"Commentaires restants après déduplication du titre et du texte: {len(responses)}"
     )
 
+    # Fusion en une colonne pour traitement du texte
+    responses["raw_text"] = responses["titre"] + ". " + responses["texte"]
+    responses["raw_text"] = responses["raw_text"].fillna(value="?")
+    # responses = responses.drop(columns=["texte"])
+
     # Suppression du texte étranger
-    lang = responses["texte"].apply(lambda d: detector.detect_language_of(d))
+    lang = responses.raw_text.apply(lambda d: detector.detect_language_of(d))
     pd.set_option("display.max_colwidth", None)
-    for t in responses.texte[lang != Language.FRENCH]:
+    for t in responses.raw_text[lang != Language.FRENCH]:
         logging.info(f"Langue {detector.detect_language_of(t)} : {t}")
         confidence_values = detector.compute_language_confidence_values(t)
         for confidence in confidence_values:
@@ -320,13 +354,9 @@ def preprocess(ctx: click.Context) -> None:
     responses.drop(responses[lang != Language.FRENCH].index, inplace=True)
     logging.info(f"Commentaires français restant : {len(responses)}")
 
-    # Fusion en une colonne pour traitement du texte
-    responses["raw_text"] = responses["titre"] + ". " + responses["texte"]
-    responses["raw_text"] = responses["raw_text"].fillna(value="?")
-    # responses = responses.drop(columns=["texte"])
-
     # Nettoyage du texte brut
     logging.info("Nettoyage du texte brut")
+    responses["raw_text"] = responses["raw_text"].str.lower()
     responses.raw_text = responses.raw_text.str.replace(r"\r", " ", regex=True)
     responses.raw_text = responses.raw_text.str.replace("+", " plus ")
     responses.raw_text = responses.raw_text.str.replace("*", " fois ")
@@ -334,9 +364,10 @@ def preprocess(ctx: click.Context) -> None:
     responses.raw_text = responses.raw_text.str.replace("qq", "quelque")
     responses.raw_text = responses.raw_text.str.replace("qlqs", "quelques")
     responses.raw_text = responses.raw_text.str.replace(".euses", "")
+    responses.raw_text = responses.raw_text.str.replace(".", ". ")
     responses.raw_text = responses.raw_text.str.replace("(", " (")
     responses.raw_text = responses.raw_text.str.replace(")", " )")
-    responses.raw_text = responses.raw_text.str.replace(r"\s+", " ", regex=True)
+    # responses.raw_text = responses.raw_text.str.replace(r"\s+", " ", regex=True)
     responses.raw_text = responses.raw_text.str.replace(r"[_%=/°]", " ", regex=True)
     responses.raw_text = responses.raw_text.str.replace(
         r"\d?\dh\d\d", "HEURE", regex=True
@@ -345,10 +376,10 @@ def preprocess(ctx: click.Context) -> None:
         preprocessing.normalize.bullet_points,
         preprocessing.normalize.hyphenated_words,
         preprocessing.replace.urls,
-        partial(preprocessing.replace.numbers, repl=" NOMBRE "),
+        partial(preprocessing.replace.numbers, repl=" nombre "),
         partial(preprocessing.replace.emojis, repl=" "),
         partial(preprocessing.replace.emails, repl=" "),
-        partial(preprocessing.replace.currency_symbols, repl=" Euros "),
+        partial(preprocessing.replace.currency_symbols, repl=" euros "),
         preprocessing.remove.html_tags,
         preprocessing.normalize.whitespace,
     )
@@ -356,22 +387,33 @@ def preprocess(ctx: click.Context) -> None:
 
     # Correction orthographique des commentaires
     logging.info(f"Correction orthographique des commentaires de {consultation}")
+    nlp = _fr_nlp()
+    tokenizer = nlp.tokenizer
+    corrected = pd.DataFrame(columns=["raw_text", "checked_text"])
+    added_words = Path(data_dir + "/external/" + "mtes.txt")
+    # Correction orthographique avec hunspell
     spell = hunspell.HunSpell(
         "/usr/share/hunspell/fr_FR.dic", "/usr/share/hunspell/fr_FR.aff"
     )
-    added_words = Path(data_dir + "/external/" + "mtes.txt")
     if added_words.is_file():
+        logging.info(f"Ajout des mots du fichier {added_words}")
         spell.add_dic(added_words)
-    corrected = pd.DataFrame(columns=["raw_text", "checked_text"])
-    nlp = _fr_nlp()
-    tokenizer = nlp.tokenizer
     responses["checked_text"] = responses["raw_text"].apply(
         lambda d: _spell_correction(tokenizer(d), spell, corrected)
     )
+    # Correction orthographique avec pyspellchecker => très lent
+    # spell = SpellChecker(language="fr")
+    # if added_words.is_file():
+    #     logging.info(f"Ajout des mots du fichier {added_words}")
+    #     spell.word_frequency.load_text_file(added_words)
+    # responses["checked_text"] = responses["raw_text"].apply(
+    #     lambda d: _spell_correction2(tokenizer(d), spell, corrected)
+    # )
+
+    logging.info(f"Nombre de mots corrigés : {len(corrected)}")
     corrected = corrected.drop_duplicates(
         subset=["raw_text", "checked_text"]
     ).sort_values(by="raw_text")
-    logging.info(f"Nombre de mots corrigés : {len(corrected)}")
 
     # Lemmatisation des commentaires
     logging.info("Lemmatisation des commentaires")
@@ -583,15 +625,15 @@ def classify(ctx: click.Context) -> None:
     # Concaténation des commentaires annotés
     annotated = pd.concat([favorable, defavorable, annotated], ignore_index=True)
 
-    logging.info(f"Nombre de commentaires annotés : {len(annotated)}")
+    nb_comments = len(annotated)
+    nb_favorable = len(annotated[annotated.opinion == "Favorable"])
+    nb_defavorable = len(annotated[annotated.opinion == "Défavorable"])
+    logging.info(f"Nombre de commentaires annotés : {nb_comments}")
     logging.info(
-        f"Nombre de commentaires favorables : {len(annotated[annotated.opinion == 'Favorable'])}"
+        f"Nombre de commentaires favorables : {nb_favorable} ({nb_favorable / nb_comments * 100:.2f}%)"
     )
     logging.info(
-        f"Nombre de commentaires défavorables : {len(annotated[annotated.opinion == 'Défavorable'])}"
-    )
-    logging.info(
-        f"Nombre de commentaires neutres : {len(annotated[annotated.opinion == 'Neutre'])}"
+        f"Nombre de commentaires défavorables : {nb_defavorable} ({nb_defavorable / nb_comments * 100:.2f}%)"
     )
 
     # Création du modèle de classification
@@ -644,14 +686,17 @@ def classify(ctx: click.Context) -> None:
     # Prédiction sur l'ensemble des commentaires
     logging.info("Prédiction sur l'ensemble des commentaires")
     responses["Opinion_estimée"] = pipe.predict(responses.lemma)
+    nb_favorable = len(responses[responses.Opinion_estimée == "Favorable"])
+    nb_defavorable = len(responses[responses.Opinion_estimée == "Défavorable"])
+    nb_neutre = len(responses[responses.Opinion_estimée == "Neutre"])
     logging.info(
-        f"Nombre de commentaires favorables : {len(responses[responses.Opinion_estimée == 'Favorable'])}"
+        f"Nombre de commentaires favorables : {nb_favorable} ({nb_favorable / len(responses) * 100:.2f}%)"
     )
     logging.info(
-        f"Nombre de commentaires défavorables : {len(responses[responses.Opinion_estimée == 'Défavorable'])}"
+        f"Nombre de commentaires défavorables : {nb_defavorable} ({nb_defavorable / len(responses) * 100:.2f}%)"
     )
     logging.info(
-        f"Nombre de commentaires neutres : {len(responses[responses.Opinion_estimée == 'Neutre'])}"
+        f"Nombre de commentaires neutres : {nb_neutre} ({nb_neutre / len(responses) * 100:.2f}%)"
     )
     # Ecriture du fichier résultant
     csv_file = Path(data_dir + "/processed/" + consultation + ".csv")
