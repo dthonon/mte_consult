@@ -33,7 +33,6 @@ spacy = ">=3.8"
 spacy-streamlit = ">=1.0"
 # fr-projet-de-pna-loup = { path = "models/projet_de_pna_loup/packages/fr_projet_de_pna_loup-0.0.1/dist/fr_projet_de_pna_loup-0.0.1.tar.gz" }
 # fr-projet-arrete-tirs = { path = "models/projet_arrêté_tirs/packages/fr_projet_arrete_tirs-0.0.1/dist/fr_projet_arrete_tirs-0.0.1.tar.gz" }
-pyspellchecker = "^0.8.3"
 
 [tool.poetry.dev-dependencies]
 Pygments = ">=2.10"

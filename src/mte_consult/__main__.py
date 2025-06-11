@@ -29,7 +29,6 @@ from sklearn.linear_model import LogisticRegression  # type: ignore
 from sklearn.model_selection import train_test_split  # type: ignore
 from sklearn.pipeline import Pipeline  # type: ignore
 from spacy.tokenizer import Tokenizer  # type: ignore
-from spellchecker import SpellChecker
 from textacy import preprocessing
 
 
@@ -120,8 +119,11 @@ def retrieve(ctx: click.Context) -> None:
     nb_com_re = re.compile(r"(Consultation.* )(\d+) contributions")
     forum_re = re.compile(r".*>(\d+)</a>")
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        + "(KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/119.0.0.0 Safari/537.36"
+        ),
         "Cache-Control": "no-cache, no-store, must-revalidate",
         "Pragma": "no-cache",
         "Expires": "0",
@@ -137,10 +139,7 @@ def retrieve(ctx: click.Context) -> None:
         random.shuffle(pages)
         npage = pages[0]
         if npage < max_com:
-            if npage == 0:
-                payload = {"lang": "fr"}
-            else:
-                payload = {"lang": "fr", "debut_forums": str(npage)}
+            payload = {"lang": "fr", "debut_forums": str(npage)}
             logging.info(f"Téléchargement depuis {url}, params : {payload}")
             try:
                 page = requests.get(url, params=payload, timeout=10, headers=headers)
@@ -150,13 +149,21 @@ def retrieve(ctx: click.Context) -> None:
                     continue
                 contenu = BeautifulSoup(page.content, "html.parser")
 
+                dateart_tag = contenu.select_one("div.dateart")
+                dateart_text = (
+                    dateart_tag.text.strip().splitlines()
+                    if dateart_tag is not None
+                    else []
+                )
                 nb_com = re.match(
                     nb_com_re,
-                    " ".join(
-                        contenu.select_one("div.dateart").text.strip().splitlines()
-                    ),
+                    " ".join(dateart_text),
                 )
-                if int(nb_com.group(2)) > 0 and max_com != int(nb_com.group(2)):
+                if (
+                    nb_com is not None
+                    and int(nb_com.group(2)) > 0
+                    and max_com != int(nb_com.group(2))
+                ):
                     max_com = int(nb_com.group(2))
                     logging.info(f"Nombre total de commentaires {max_com}")
 
@@ -171,29 +178,40 @@ def retrieve(ctx: click.Context) -> None:
                     ),
                 )
 
-                rec = (int(forum.group(1)) - 1) * NB_COMMENTS
-                # La page reçue est retirée de la liste
-                if rec in pages:
-                    pages.remove(rec)
-                logging.info(
-                    f"Page demandée : {npage}, page reçue : {rec}, pages restantes {len(pages)}"
-                )
+                if forum is not None:
+                    rec = (int(forum.group(1)) - 1) * NB_COMMENTS
+                    # La page reçue est retirée de la liste
+                    if rec in pages:
+                        pages.remove(rec)
+                    logging.info(
+                        f"Page demandée : {npage}, page reçue : {rec}, pages restantes {len(pages)}"
+                    )
+                else:
+                    logging.warning(
+                        "Impossible de trouver le numéro de page dans le contenu HTML."
+                    )
+                    # Optionally, you can skip or handle this case differently
+                    pages.remove(npage)
 
                 commentaires = contenu.select("div.ligne-com")
                 pre_drop = len(responses)
                 for com in commentaires:
+                    titre_tag = com.select_one("div.titresujet")
+                    texte_tag = com.select_one("div.textesujet")
+                    titre = (
+                        " ".join(titre_tag.text.strip().splitlines())
+                        if titre_tag is not None
+                        else ""
+                    )
+                    texte = (
+                        " ".join(texte_tag.text.strip().splitlines())
+                        if texte_tag is not None
+                        else ""
+                    )
                     c = pd.DataFrame(
                         {
-                            "titre": " ".join(
-                                com.select_one("div.titresujet")
-                                .text.strip()
-                                .splitlines()
-                            ),
-                            "texte": " ".join(
-                                com.select_one("div.textesujet")
-                                .text.strip()
-                                .splitlines()
-                            ),
+                            "titre": titre,
+                            "texte": texte,
                         },
                         index=[0],
                     )
@@ -464,9 +482,9 @@ def cluster(ctx: click.Context) -> None:
     true_labels = [0 if d == labels[0] else 1 for d in responses.Opinion_estimée]
     pred_labels = list(model.fit_predict(tfidf_matrix))
     responses["pred_label"] = pred_labels
-    # print(responses[:10])
-    # print(true_labels[:30])
-    # print(pred_labels[:30])
+    print(responses[:10])
+    print(true_labels[:30])
+    print(pred_labels[:30])
     logging.info(f"Homogénéité: {metrics.homogeneity_score(true_labels, pred_labels)}")
     logging.info(f"Rand index: {metrics.adjusted_rand_score(true_labels, pred_labels)}")
     logging.info(
