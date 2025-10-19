@@ -362,20 +362,22 @@ def preprocess(ctx: click.Context) -> None:
     responses["raw_text"] = responses["raw_text"].fillna(value="?")
     # responses = responses.drop(columns=["texte"])
 
-    # Suppression du texte étranger
-    lang = responses.raw_text.apply(lambda d: detector.detect_language_of(d))
-    pd.set_option("display.max_colwidth", None)
-    for t in responses.raw_text[lang != Language.FRENCH]:
-        logging.info(f"Langue {detector.detect_language_of(t)} : {t}")
-        confidence_values = detector.compute_language_confidence_values(t)
-        for confidence in confidence_values:
-            logging.debug(f"{confidence.language.name}: {confidence.value:.2f}")
-    responses.drop(responses[lang != Language.FRENCH].index, inplace=True)
-    logging.info(f"Commentaires français restant : {len(responses)}")
-
     # Nettoyage du texte brut
     logging.info("Nettoyage du texte brut")
     responses["raw_text"] = responses["raw_text"].str.lower()
+    preproc = preprocessing.pipeline.make_pipeline(
+        preprocessing.normalize.bullet_points,
+        preprocessing.normalize.hyphenated_words,
+        preprocessing.replace.urls,
+        partial(preprocessing.replace.emails, repl=" courriel "),
+        partial(preprocessing.replace.numbers, repl=" nombre "),
+        partial(preprocessing.replace.emojis, repl=" "),
+        partial(preprocessing.replace.emails, repl=" "),
+        partial(preprocessing.replace.currency_symbols, repl=" euros "),
+        preprocessing.remove.html_tags,
+        preprocessing.normalize.whitespace,
+    )
+    responses.raw_text = responses["raw_text"].apply(preproc)
     responses.raw_text = responses.raw_text.str.replace(r"\r", " ", regex=True)
     responses.raw_text = responses.raw_text.str.replace("+", " plus ")
     responses.raw_text = responses.raw_text.str.replace("*", " fois ")
@@ -391,19 +393,17 @@ def preprocess(ctx: click.Context) -> None:
     responses.raw_text = responses.raw_text.str.replace(
         r"\d?\dh\d\d", "HEURE", regex=True
     )
-    preproc = preprocessing.pipeline.make_pipeline(
-        preprocessing.normalize.bullet_points,
-        preprocessing.normalize.hyphenated_words,
-        preprocessing.replace.urls,
-        preprocessing.replace.emails,
-        partial(preprocessing.replace.numbers, repl=" nombre "),
-        partial(preprocessing.replace.emojis, repl=" "),
-        partial(preprocessing.replace.emails, repl=" "),
-        partial(preprocessing.replace.currency_symbols, repl=" euros "),
-        preprocessing.remove.html_tags,
-        preprocessing.normalize.whitespace,
-    )
-    responses.raw_text = responses["raw_text"].apply(preproc)
+
+    # Suppression du texte étranger
+    lang = responses.raw_text.apply(lambda d: detector.detect_language_of(d))
+    pd.set_option("display.max_colwidth", None)
+    for t in responses.raw_text[lang != Language.FRENCH]:
+        logging.info(f"Langue {detector.detect_language_of(t)} : {t}")
+        confidence_values = detector.compute_language_confidence_values(t)
+        for confidence in confidence_values:
+            logging.debug(f"{confidence.language.name}: {confidence.value:.2f}")
+    responses.drop(responses[lang != Language.FRENCH].index, inplace=True)
+    logging.info(f"Commentaires français restant : {len(responses)}")
 
     # Correction orthographique des commentaires
     logging.info(f"Correction orthographique des commentaires de {consultation}")
@@ -572,7 +572,9 @@ def pretrain(ctx: click.Context) -> None:
         lambda d: "non favorable" in str(d).lower()[: len("non favorable")]
         or "défavorable" in str(d).lower()[: len("défavorable")]
         or "très défavorable" in str(d).lower()[: len("très défavorable")]
-        or "avis favorable" in str(d).lower()[: len("avis favorable")]
+        or "complètement défavorable"
+        in str(d).lower()[: len("complètement défavorable")]
+        or "avis défavorable" in str(d).lower()[: len("avis défavorable")]
         or "avis très défavorable" in str(d).lower()[: len("avis très défavorable")]
     )
     responses.loc[avis_defavorable, "opinion"] = "Défavorable"
@@ -592,6 +594,7 @@ def pretrain(ctx: click.Context) -> None:
 
     # Il ne reste que les commentaires sans avis
     logging.info(f"Nombre de commentaires sans avis : {len(responses)}")
+    responses.opinion = "Inconnu"
     # Sauve les commentaires sans avis dans un fichier
     csv_file = Path(data_dir + "/preprocessed/" + consultation + "_avis_inconnu.csv")
     logging.info(f"Sauvegarde des commentaires sans avis dans {csv_file}")
@@ -644,12 +647,16 @@ def classify(ctx: click.Context) -> None:
     nb_comments = len(annotated)
     nb_favorable = len(annotated[annotated.opinion == "Favorable"])
     nb_defavorable = len(annotated[annotated.opinion == "Défavorable"])
+    nb_inconnnu = len(annotated[annotated.opinion == "Inconnu"])
     logging.info(f"Nombre de commentaires annotés : {nb_comments}")
     logging.info(
         f"Nombre de commentaires favorables : {nb_favorable} ({nb_favorable / nb_comments * 100:.2f}%)"
     )
     logging.info(
         f"Nombre de commentaires défavorables : {nb_defavorable} ({nb_defavorable / nb_comments * 100:.2f}%)"
+    )
+    logging.info(
+        f"Nombre de commentaires inconnus : {nb_inconnnu} ({nb_inconnnu / nb_comments * 100:.2f}%)"
     )
 
     # Sous-échantillonnage des commentaires majoritaires
@@ -670,7 +677,7 @@ def classify(ctx: click.Context) -> None:
         decode_error="ignore",  # Ignore decoding errors
         strip_accents="unicode",  # Normalize accents
         lowercase=False,
-        max_df=0.99,  # Ignore terms that appear in more than x% of the documents
+        max_df=0.98,  # Ignore terms that appear in more than x% of the documents
         min_df=0.1,  # Ignore terms that appear in less than x% of the documents
         stop_words=stop,
         use_idf=True,
@@ -678,7 +685,8 @@ def classify(ctx: click.Context) -> None:
     )
     # Fit vectoriser to NLP processed column
     tfidf_matrix = tfidf_vectorizer.fit_transform(responses.lemma)
-    logging.info(f"TF-IDF (n_samples, n_features): {tfidf_matrix.shape}")
+    tf_rows, tf_cols = tfidf_matrix.shape
+    logging.info(f"TF-IDF (n_samples, n_features): {tf_rows}, {tf_cols}")
 
     # Séparation des données en train et test
     logging.info("Séparation des données en train et test")
@@ -710,20 +718,27 @@ def classify(ctx: click.Context) -> None:
         f"Confusion matrix :\n{metrics.confusion_matrix(y_train, y_pred, labels=['Favorable', 'Défavorable'])}"
     )
 
-    # Prédiction sur l'ensemble des commentaires
-    logging.info("Prédiction sur l'ensemble des commentaires")
+    # Prédiction sur tous les commentaires
+    logging.info("Prédiction sur les commentaires sans avis")
     responses["Opinion_estimée"] = pipe.predict(responses.lemma)
     nb_favorable = len(responses[responses.Opinion_estimée == "Favorable"])
     nb_defavorable = len(responses[responses.Opinion_estimée == "Défavorable"])
-    nb_neutre = len(responses[responses.Opinion_estimée == "Neutre"])
     logging.info(
         f"Nombre de commentaires favorables : {nb_favorable} ({nb_favorable / len(responses) * 100:.2f}%)"
     )
     logging.info(
         f"Nombre de commentaires défavorables : {nb_defavorable} ({nb_defavorable / len(responses) * 100:.2f}%)"
     )
+    # Forcage des avis connus
+    responses.loc[responses.opinion == "Favorable", "Opinion_estimée"] = "Favorable"
+    responses.loc[responses.opinion == "Défavorable", "Opinion_estimée"] = "Défavorable"
+    nb_favorable = len(responses[responses.Opinion_estimée == "Favorable"])
+    nb_defavorable = len(responses[responses.Opinion_estimée == "Défavorable"])
     logging.info(
-        f"Nombre de commentaires neutres : {nb_neutre} ({nb_neutre / len(responses) * 100:.2f}%)"
+        f"Nombre de commentaires favorables : {nb_favorable} ({nb_favorable / len(responses) * 100:.2f}%)"
+    )
+    logging.info(
+        f"Nombre de commentaires défavorables : {nb_defavorable} ({nb_defavorable / len(responses) * 100:.2f}%)"
     )
     # Ecriture du fichier résultant
     csv_file = Path(data_dir + "/processed/" + consultation + ".csv")
