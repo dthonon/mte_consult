@@ -570,25 +570,6 @@ def pretrain(ctx: click.Context) -> None:
     )
 
     # Séparation des commentaires favorables et défavorables
-    avis_favorable = responses.checked_text.apply(
-        lambda d: "avis favorable" in str(d).lower()
-        or "avis très favorable" in str(d).lower()
-    )
-    logging.info(
-        f"Nombre de commentaires avec avis favorable : {len(responses[avis_favorable])}"
-    )
-    responses.loc[avis_favorable, "opinion"] = "Favorable"
-
-    # Sauve les commentaires favorables dans un fichier
-    csv_file = Path(data_dir + "/preprocessed/" + consultation + "_avis_favorable.csv")
-    logging.info(f"Sauvegarde des commentaires favorables dans {csv_file}")
-    responses[avis_favorable].to_csv(csv_file, header=True, sep=";", index=False)
-    # Suppression des commentaires favorables
-    responses = responses[~avis_favorable].reset_index(drop=True)
-    logging.info(
-        f"Nombre de commentaires restants : {len(responses)} (avis défavorable)"
-    )
-
     avis_defavorable = responses.checked_text.apply(
         lambda d: "avis défavorable" in str(d).lower()
         or "non favorable" in str(d).lower()
@@ -605,6 +586,24 @@ def pretrain(ctx: click.Context) -> None:
     )
     logging.info(f"Sauvegarde des commentaires défavorables dans {csv_file}")
     responses[avis_defavorable].to_csv(csv_file, header=True, sep=";", index=False)
+    # Suppression des commentaires favorables
+    responses = responses[~avis_defavorable].reset_index(drop=True)
+    logging.info(
+        f"Nombre de commentaires restants : {len(responses)} (avis favorables)"
+    )
+    avis_favorable = responses.checked_text.apply(
+        lambda d: "avis favorable" in str(d).lower()
+        or "avis très favorable" in str(d).lower()
+    )
+    logging.info(
+        f"Nombre de commentaires avec avis favorable : {len(responses[avis_favorable])}"
+    )
+    responses.loc[avis_favorable, "opinion"] = "Favorable"
+
+    # Sauve les commentaires favorables dans un fichier
+    csv_file = Path(data_dir + "/preprocessed/" + consultation + "_avis_favorable.csv")
+    logging.info(f"Sauvegarde des commentaires favorables dans {csv_file}")
+    responses[avis_favorable].to_csv(csv_file, header=True, sep=";", index=False)
 
 
 @main.command()
@@ -679,13 +678,13 @@ def classify(ctx: click.Context) -> None:
         strip_accents="unicode",  # Normalize accents
         lowercase=False,
         max_df=0.99,  # Ignore terms that appear in more than x% of the documents
-        min_df=0.001,  # Ignore terms that appear in less than x% of the documents
+        min_df=0.1,  # Ignore terms that appear in less than x% of the documents
         stop_words=stop,
         use_idf=True,
         ngram_range=(1, 3),
     )
     # Fit vectoriser to NLP processed column
-    tfidf_matrix = tfidf_vectorizer.fit_transform(x_res)
+    tfidf_matrix = tfidf_vectorizer.fit_transform(responses.lemma)
     logging.info(f"TF-IDF (n_samples, n_features): {tfidf_matrix.shape}")
 
     # Séparation des données en train et test
@@ -711,6 +710,9 @@ def classify(ctx: click.Context) -> None:
     logging.info("Prédiction sur le jeu de test")
     y_pred = pipe.predict(x_train)
     logging.info(f"Accuracy du modèle : {metrics.accuracy_score(y_train, y_pred)}")
+    logging.info(
+        f"Confusion matrix :\n{metrics.classification_report(y_train, y_pred, labels=['Favorable', 'Défavorable'], digits=4)}"
+    )
     logging.info(
         f"Confusion matrix :\n{metrics.confusion_matrix(y_train, y_pred, labels=['Favorable', 'Défavorable'])}"
     )
