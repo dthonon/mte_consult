@@ -547,33 +547,33 @@ def pretrain(ctx: click.Context) -> None:
         responses["opinion"] = ""
 
     # Découpage selon l'avis exprimé
-    # Suppression des commentaires sans avis
-    avis_inconnu = responses.checked_text.apply(
-        lambda d: not (
-            "avis favorable" in str(d).lower()
-            or "avis très favorable" in str(d).lower()
-            or "non favorable" in str(d).lower()
-            or "avis défavorable" in str(d).lower()
-            or "avis très défavorable" in str(d).lower()
-        )
+    # Séparation des commentaires favorables
+    avis_favorable = responses.checked_text.apply(
+        lambda d: "avis favorable" in str(d).lower()[: len("avis favorable")]
+        or "favorable" in str(d).lower()[: len("favorable")]
+        or "avis très favorable" in str(d).lower()[: len("avis très favorable")]
     )
-    logging.info(f"Nombre de commentaires sans avis : {len(responses[avis_inconnu])}")
-    # Sauve les commentaires sans avis dans un fichier
-    csv_file = Path(data_dir + "/preprocessed/" + consultation + "_avis_inconnu.csv")
-    logging.info(f"Sauvegarde des commentaires sans avis dans {csv_file}")
-    responses[avis_inconnu].to_csv(csv_file, header=True, sep=";", index=False)
-    # Ecriture du fichier résultant
-    # Suppression des commentaires sans avis
-    responses = responses[~avis_inconnu].reset_index(drop=True)
     logging.info(
-        f"Nombre de commentaires restants : {len(responses)} (avis favorable ou défavorable)"
+        f"Nombre de commentaires avec avis favorable : {len(responses[avis_favorable])}"
+    )
+    responses.loc[avis_favorable, "opinion"] = "Favorable"
+    # Sauve les commentaires favorables dans un fichier
+    csv_file = Path(data_dir + "/preprocessed/" + consultation + "_avis_favorable.csv")
+    logging.info(f"Sauvegarde des commentaires favorables dans {csv_file}")
+    responses[avis_favorable].to_csv(csv_file, header=True, sep=";", index=False)
+    # Suppression des commentaires favorables
+    responses = responses[~avis_favorable].reset_index(drop=True)
+    logging.info(
+        f"Nombre de commentaires restants : {len(responses)} (avis défavorable ou inconnus)"
     )
 
-    # Séparation des commentaires favorables et défavorables
+    # Séparation des commentaires défavorables
     avis_defavorable = responses.checked_text.apply(
-        lambda d: "avis défavorable" in str(d).lower()
-        or "non favorable" in str(d).lower()
-        or "avis très défavorable" in str(d).lower()
+        lambda d: "non favorable" in str(d).lower()[: len("non favorable")]
+        or "défavorable" in str(d).lower()[: len("défavorable")]
+        or "très défavorable" in str(d).lower()[: len("très défavorable")]
+        or "avis favorable" in str(d).lower()[: len("avis favorable")]
+        or "avis très défavorable" in str(d).lower()[: len("avis très défavorable")]
     )
     responses.loc[avis_defavorable, "opinion"] = "Défavorable"
 
@@ -586,24 +586,17 @@ def pretrain(ctx: click.Context) -> None:
     )
     logging.info(f"Sauvegarde des commentaires défavorables dans {csv_file}")
     responses[avis_defavorable].to_csv(csv_file, header=True, sep=";", index=False)
-    # Suppression des commentaires favorables
+    # Suppression des commentaires défavorables
     responses = responses[~avis_defavorable].reset_index(drop=True)
-    logging.info(
-        f"Nombre de commentaires restants : {len(responses)} (avis favorables)"
-    )
-    avis_favorable = responses.checked_text.apply(
-        lambda d: "avis favorable" in str(d).lower()
-        or "avis très favorable" in str(d).lower()
-    )
-    logging.info(
-        f"Nombre de commentaires avec avis favorable : {len(responses[avis_favorable])}"
-    )
-    responses.loc[avis_favorable, "opinion"] = "Favorable"
+    logging.info(f"Nombre de commentaires restants : {len(responses)} (avis inconnus)")
 
-    # Sauve les commentaires favorables dans un fichier
-    csv_file = Path(data_dir + "/preprocessed/" + consultation + "_avis_favorable.csv")
-    logging.info(f"Sauvegarde des commentaires favorables dans {csv_file}")
-    responses[avis_favorable].to_csv(csv_file, header=True, sep=";", index=False)
+    # Il ne reste que les commentaires sans avis
+    logging.info(f"Nombre de commentaires sans avis : {len(responses)}")
+    # Sauve les commentaires sans avis dans un fichier
+    csv_file = Path(data_dir + "/preprocessed/" + consultation + "_avis_inconnu.csv")
+    logging.info(f"Sauvegarde des commentaires sans avis dans {csv_file}")
+    # Ecriture du fichier résultant
+    responses.to_csv(csv_file, header=True, sep=";", index=False)
 
 
 @main.command()
