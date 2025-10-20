@@ -648,15 +648,18 @@ def classify(ctx: click.Context) -> None:
     logging.info(f"Lecture de {len(responses)} commentaires prétraités")
 
     nb_comments = len(responses)
-    nb_favorable = len(favorable)
-    nb_defavorable = len(defavorable)
+    nb_annotés = len(annotated)
+    nb_favorable = len(annotated[annotated.opinion == "Favorable"])
+    nb_defavorable = len(annotated[annotated.opinion == "Défavorable"])
     nb_inconnnu = len(inconnu)
-    logging.info(f"Nombre de commentaires annotés : {nb_comments}")
     logging.info(
-        f"Nombre de commentaires favorables : {nb_favorable} ({nb_favorable / nb_comments * 100:.2f}%)"
+        f"Nombre de commentaires totaux : {nb_comments}, annotés : {nb_annotés}"
     )
     logging.info(
-        f"Nombre de commentaires défavorables : {nb_defavorable} ({nb_defavorable / nb_comments * 100:.2f}%)"
+        f"Nombre de commentaires favorables : {nb_favorable} ({nb_favorable / nb_comments * 100:.2f}% du total, {nb_favorable / nb_annotés * 100:.2f}% des annotés)"
+    )
+    logging.info(
+        f"Nombre de commentaires défavorables : {nb_defavorable} ({nb_defavorable / nb_comments * 100:.2f}% du total, {nb_defavorable / nb_annotés * 100:.2f}% des annotés)"
     )
     logging.info(
         f"Nombre de commentaires inconnus : {nb_inconnnu} ({nb_inconnnu / nb_comments * 100:.2f}%)"
@@ -682,7 +685,7 @@ def classify(ctx: click.Context) -> None:
 
     # Sous-échantillonnage des commentaires majoritaires
     logging.info("Sous-échantillonnage des commentaires majoritaires")
-    rus = RandomUnderSampler(random_state=42)
+    rus = RandomUnderSampler(sampling_strategy=0.5, random_state=42)
     x_res, y_res = rus.fit_resample(
         tfidf_vectorizer.transform(annotated.lemma), annotated.opinion
     )
