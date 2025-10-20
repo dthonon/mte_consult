@@ -665,7 +665,7 @@ def classify(ctx: click.Context) -> None:
     # Création du modèle de classification
     logging.info("Vectorisation des textes pré-traités")
     responses.lemma = responses.lemma.fillna(value="Neutre")
-    stop = ["arrete", "avis"]
+    stop = ["arrete", "avis", "decret", "loup"]
     tfidf_vectorizer = TfidfVectorizer(
         decode_error="ignore",  # Ignore decoding errors
         strip_accents="unicode",  # Normalize accents
