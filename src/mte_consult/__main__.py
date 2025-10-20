@@ -28,6 +28,8 @@ from sklearn.cluster import (
 )
 from sklearn.feature_extraction.text import TfidfVectorizer  # type: ignore
 from sklearn.linear_model import LogisticRegression  # type: ignore
+from sklearn.ensemble import RandomForestClassifier  # type: ignore
+from sklearn.svm import LinearSVC  # type: ignore
 from sklearn.model_selection import train_test_split  # type: ignore
 from sklearn.pipeline import Pipeline  # type: ignore
 from spacy.tokenizer import Tokenizer  # type: ignore
@@ -659,18 +661,8 @@ def classify(ctx: click.Context) -> None:
         f"Nombre de commentaires inconnus : {nb_inconnnu} ({nb_inconnnu / nb_comments * 100:.2f}%)"
     )
 
-    # Sous-échantillonnage des commentaires majoritaires
-    logging.info("Sous-échantillonnage des commentaires majoritaires")
-    rus = RandomUnderSampler(random_state=42)
-    x_res, y_res = rus.fit_resample(annotated.lemma.to_frame(), annotated.opinion)
-    x_res = x_res.lemma
-    logging.info(f"Resampled Train set size: {len(x_res)}, Test set size: {len(y_res)}")
-    logging.info(f"Original dataset shape {Counter(annotated.opinion)}")
-    logging.info(f"Resampled dataset shape {Counter(y_res)}")
-
     # Création du modèle de classification
-    logging.info("Création du modèle de classification")
-    logging.info("Vectorisation des textes")
+    logging.info("Vectorisation des textes pré-traités")
     responses.lemma = responses.lemma.fillna(value="Neutre")
     stop = ["arrete", "avis"]
     tfidf_vectorizer = TfidfVectorizer(
@@ -688,16 +680,32 @@ def classify(ctx: click.Context) -> None:
     tf_rows, tf_cols = tfidf_matrix.shape
     logging.info(f"TF-IDF (n_samples, n_features): {tf_rows}, {tf_cols}")
 
+    # Sous-échantillonnage des commentaires majoritaires
+    logging.info("Sous-échantillonnage des commentaires majoritaires")
+    rus = RandomUnderSampler(random_state=42)
+    x_res, y_res = rus.fit_resample(annotated.lemma.to_frame(), annotated.opinion)
+    x_res = x_res.lemma
+    logging.info(f"Dimensions sous-échantillonnées : {len(x_res)}")
+    logging.info(f"Forme initiale : {Counter(annotated.opinion)}")
+    logging.info(f"Forme sous-échantillonnée : {Counter(y_res)}")
     # Séparation des données en train et test
-    logging.info("Séparation des données en train et test")
-    x_train, x_test, y_train, y_test = train_test_split(x_res, y_res, test_size=0.3)
+    logging.info("Séparation des données en entrainement et test")
+    x_train, x_test, y_train, y_test = train_test_split(
+        x_res, y_res, test_size=0.2, random_state=42
+    )
     logging.info(
-        f"Initial Train set size: {len(x_train)}, Test set size: {len(x_test)}"
+        f"Dimensions initiale, Entrainement : {len(x_train)}, Test : {len(x_test)}"
     )
 
     # Entraînement du modèle
-    logging.info("Entraînement du modèle de classification")
-    classifier = LogisticRegression()
+    logging.info(
+        "Entraînement du modèle de classification RandomForestClassifier(log_loss)"
+    )
+    # classifier = LogisticRegression()
+    classifier = RandomForestClassifier(
+        criterion="log_loss", n_estimators=100, random_state=42
+    )
+    # classifier = LinearSVC
     # Create pipeline using TfidfVectorizer
     pipe = Pipeline(
         [
@@ -705,21 +713,29 @@ def classify(ctx: click.Context) -> None:
             ("classifier", classifier),
         ]
     )
-    # Entraînement du modèle
+    # Entraînement du modèle sur le jeu sous-échantillonné
+    logging.info(
+        f"Entraînement du modèle sur le jeu sous-échantillonné : {len(x_train)} commentaires"
+    )
     pipe.fit(x_train, y_train)
     # Prédiction sur le jeu de test
-    logging.info("Prédiction sur le jeu de test")
-    y_pred = pipe.predict(x_train)
+    logging.info(
+        f"Prédiction sur le jeu de test sous-échantillonné : {len(x_test)} commentaires"
+    )
+    y_pred = pipe.predict(x_test)
     logging.info(f"Accuracy du modèle : {metrics.accuracy_score(y_train, y_pred)}")
     logging.info(
-        f"Confusion matrix :\n{metrics.classification_report(y_train, y_pred, labels=['Favorable', 'Défavorable'], digits=4)}"
+        f"Rapport de classification :\n{metrics.classification_report(y_train, y_pred, labels=['Favorable', 'Défavorable'], digits=4)}"
     )
     logging.info(
         f"Confusion matrix :\n{metrics.confusion_matrix(y_train, y_pred, labels=['Favorable', 'Défavorable'])}"
     )
+    logging.info(
+        f"Confusion matrix :\n{metrics.confusion_matrix(y_train, y_pred, labels=['Favorable', 'Défavorable'], normalize='all')}"
+    )
 
     # Prédiction sur tous les commentaires
-    logging.info("Prédiction sur les commentaires sans avis")
+    logging.info("Prédiction sur tous les commentaires")
     responses["Opinion_estimée"] = pipe.predict(responses.lemma)
     nb_favorable = len(responses[responses.Opinion_estimée == "Favorable"])
     nb_defavorable = len(responses[responses.Opinion_estimée == "Défavorable"])
@@ -730,6 +746,7 @@ def classify(ctx: click.Context) -> None:
         f"Nombre de commentaires défavorables : {nb_defavorable} ({nb_defavorable / len(responses) * 100:.2f}%)"
     )
     # Forcage des avis connus
+    logging
     responses.loc[responses.opinion == "Favorable", "Opinion_estimée"] = "Favorable"
     responses.loc[responses.opinion == "Défavorable", "Opinion_estimée"] = "Défavorable"
     nb_favorable = len(responses[responses.Opinion_estimée == "Favorable"])
