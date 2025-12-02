@@ -657,15 +657,14 @@ def classify(ctx: click.Context) -> None:
     # Création du modèle de classification
     logging.info("Création du modèle de classification")
     logging.info("Vectorisation des textes")
-    print(responses[responses.lemma.isna()])
     responses.lemma = responses.lemma.fillna(value="Neutre")
     stop = ["arrete", "avis"]
     tfidf_vectorizer = TfidfVectorizer(
         decode_error="ignore",  # Ignore decoding errors
         strip_accents="unicode",  # Normalize accents
         lowercase=False,
-        max_df=0.9,  # Ignore terms that appear in more than x% of the documents
-        min_df=0.15,  # Ignore terms that appear in less than x% of the documents
+        max_df=0.95,  # Ignore terms that appear in more than x% of the documents
+        min_df=0.05,  # Ignore terms that appear in less than x% of the documents
         stop_words=stop,
         use_idf=True,
         ngram_range=(1, 3),
