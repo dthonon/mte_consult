@@ -19,18 +19,21 @@ import pandas as pd
 import requests
 import spacy
 from bs4 import BeautifulSoup
-from lingua import Language
-from lingua import LanguageDetectorBuilder
+from imblearn.under_sampling import RandomUnderSampler
+from lingua import Language, LanguageDetectorBuilder
 from sklearn import metrics  # type: ignore
-from sklearn.cluster import DBSCAN  # type: ignore
-from sklearn.cluster import KMeans
+from sklearn.cluster import (
+    DBSCAN,  # type: ignore
+    KMeans,
+)
 from sklearn.feature_extraction.text import TfidfVectorizer  # type: ignore
 from sklearn.linear_model import LogisticRegression  # type: ignore
+from sklearn.ensemble import RandomForestClassifier  # type: ignore
+from sklearn.svm import LinearSVC  # type: ignore
 from sklearn.model_selection import train_test_split  # type: ignore
 from sklearn.pipeline import Pipeline  # type: ignore
 from spacy.tokenizer import Tokenizer  # type: ignore
 from textacy import preprocessing
-
 
 # Constantes
 NB_COMMENTS = 20  # Nombre de commentaires par page
@@ -361,6 +364,38 @@ def preprocess(ctx: click.Context) -> None:
     responses["raw_text"] = responses["raw_text"].fillna(value="?")
     # responses = responses.drop(columns=["texte"])
 
+    # Nettoyage du texte brut
+    logging.info("Nettoyage du texte brut")
+    responses["raw_text"] = responses["raw_text"].str.lower()
+    preproc = preprocessing.pipeline.make_pipeline(
+        preprocessing.normalize.bullet_points,
+        preprocessing.normalize.hyphenated_words,
+        preprocessing.replace.urls,
+        partial(preprocessing.replace.emails, repl=" courriel "),
+        partial(preprocessing.replace.numbers, repl=" nombre "),
+        partial(preprocessing.replace.emojis, repl=" "),
+        partial(preprocessing.replace.emails, repl=" "),
+        partial(preprocessing.replace.currency_symbols, repl=" euros "),
+        preprocessing.remove.html_tags,
+        preprocessing.normalize.whitespace,
+    )
+    responses.raw_text = responses["raw_text"].apply(preproc)
+    responses.raw_text = responses.raw_text.str.replace(r"\r", " ", regex=True)
+    responses.raw_text = responses.raw_text.str.replace("+", " plus ")
+    responses.raw_text = responses.raw_text.str.replace("*", " fois ")
+    responses.raw_text = responses.raw_text.str.replace("grd", "grand")
+    responses.raw_text = responses.raw_text.str.replace("qq", "quelque")
+    responses.raw_text = responses.raw_text.str.replace("qlqs", "quelques")
+    responses.raw_text = responses.raw_text.str.replace(".euses", "")
+    responses.raw_text = responses.raw_text.str.replace(".", ". ")
+    responses.raw_text = responses.raw_text.str.replace("(", " (")
+    responses.raw_text = responses.raw_text.str.replace(")", ") ")
+    # responses.raw_text = responses.raw_text.str.replace(r"\s+", " ", regex=True)
+    responses.raw_text = responses.raw_text.str.replace(r"[_%=/°]", " ", regex=True)
+    responses.raw_text = responses.raw_text.str.replace(
+        r"\d?\dh\d\d", "HEURE", regex=True
+    )
+
     # Suppression du texte étranger
     lang = responses.raw_text.apply(lambda d: detector.detect_language_of(d))
     pd.set_option("display.max_colwidth", None)
@@ -371,37 +406,6 @@ def preprocess(ctx: click.Context) -> None:
             logging.debug(f"{confidence.language.name}: {confidence.value:.2f}")
     responses.drop(responses[lang != Language.FRENCH].index, inplace=True)
     logging.info(f"Commentaires français restant : {len(responses)}")
-
-    # Nettoyage du texte brut
-    logging.info("Nettoyage du texte brut")
-    responses["raw_text"] = responses["raw_text"].str.lower()
-    responses.raw_text = responses.raw_text.str.replace(r"\r", " ", regex=True)
-    responses.raw_text = responses.raw_text.str.replace("+", " plus ")
-    responses.raw_text = responses.raw_text.str.replace("*", " fois ")
-    responses.raw_text = responses.raw_text.str.replace("grd", "grand")
-    responses.raw_text = responses.raw_text.str.replace("qq", "quelque")
-    responses.raw_text = responses.raw_text.str.replace("qlqs", "quelques")
-    responses.raw_text = responses.raw_text.str.replace(".euses", "")
-    responses.raw_text = responses.raw_text.str.replace(".", ". ")
-    responses.raw_text = responses.raw_text.str.replace("(", " (")
-    responses.raw_text = responses.raw_text.str.replace(")", " )")
-    # responses.raw_text = responses.raw_text.str.replace(r"\s+", " ", regex=True)
-    responses.raw_text = responses.raw_text.str.replace(r"[_%=/°]", " ", regex=True)
-    responses.raw_text = responses.raw_text.str.replace(
-        r"\d?\dh\d\d", "HEURE", regex=True
-    )
-    preproc = preprocessing.pipeline.make_pipeline(
-        preprocessing.normalize.bullet_points,
-        preprocessing.normalize.hyphenated_words,
-        preprocessing.replace.urls,
-        partial(preprocessing.replace.numbers, repl=" nombre "),
-        partial(preprocessing.replace.emojis, repl=" "),
-        partial(preprocessing.replace.emails, repl=" "),
-        partial(preprocessing.replace.currency_symbols, repl=" euros "),
-        preprocessing.remove.html_tags,
-        preprocessing.normalize.whitespace,
-    )
-    responses.raw_text = responses["raw_text"].apply(preproc)
 
     # Correction orthographique des commentaires
     logging.info(f"Correction orthographique des commentaires de {consultation}")
@@ -543,38 +547,18 @@ def pretrain(ctx: click.Context) -> None:
     if "opinion" not in responses.columns:
         logging.info("Ajout de la colonne opinion")
         responses["opinion"] = ""
-    # Découpage selon l'avis exprimé
-    # Suppression des commentaires sans avis
-    avis_inconnu = responses.raw_text.apply(
-        lambda d: not (
-            "avis favorable" in str(d).lower()
-            or "avis très favorable" in str(d).lower()
-            or "avis défavorable" in str(d).lower()
-            or "avis très défavorable" in str(d).lower()
-        )
-    )
-    logging.info(f"Nombre de commentaires sans avis : {len(responses[avis_inconnu])}")
-    # Sauve les commentaires sans avis dans un fichier
-    csv_file = Path(data_dir + "/preprocessed/" + consultation + "_avis_inconnu.csv")
-    logging.info(f"Sauvegarde des commentaires sans avis dans {csv_file}")
-    responses[avis_inconnu].to_csv(csv_file, header=True, sep=";", index=False)
-    # Ecriture du fichier résultant
-    # Suppression des commentaires sans avis
-    responses = responses[~avis_inconnu].reset_index(drop=True)
-    logging.info(
-        f"Nombre de commentaires restants : {len(responses)} (avis favorable ou défavorable)"
-    )
 
-    # Séparation des commentaires favorables et défavorables
-    avis_favorable = responses.raw_text.apply(
-        lambda d: "avis favorable" in str(d).lower()
-        or "avis très favorable" in str(d).lower()
+    # Découpage selon l'avis exprimé
+    # Séparation des commentaires favorables
+    avis_favorable = responses.checked_text.apply(
+        lambda d: "avis favorable" in str(d).lower()[: len("avis favorable")]
+        or "favorable" in str(d).lower()[: len("favorable")]
+        or "avis très favorable" in str(d).lower()[: len("avis très favorable")]
     )
     logging.info(
         f"Nombre de commentaires avec avis favorable : {len(responses[avis_favorable])}"
     )
     responses.loc[avis_favorable, "opinion"] = "Favorable"
-
     # Sauve les commentaires favorables dans un fichier
     csv_file = Path(data_dir + "/preprocessed/" + consultation + "_avis_favorable.csv")
     logging.info(f"Sauvegarde des commentaires favorables dans {csv_file}")
@@ -582,12 +566,18 @@ def pretrain(ctx: click.Context) -> None:
     # Suppression des commentaires favorables
     responses = responses[~avis_favorable].reset_index(drop=True)
     logging.info(
-        f"Nombre de commentaires restants : {len(responses)} (avis défavorable)"
+        f"Nombre de commentaires restants : {len(responses)} (avis défavorable ou inconnus)"
     )
 
-    avis_defavorable = responses.raw_text.apply(
-        lambda d: "avis défavorable" in str(d).lower()
-        or "avis très défavorable" in str(d).lower()
+    # Séparation des commentaires défavorables
+    avis_defavorable = responses.checked_text.apply(
+        lambda d: "non favorable" in str(d).lower()[: len("non favorable")]
+        or "défavorable" in str(d).lower()[: len("défavorable")]
+        or "très défavorable" in str(d).lower()[: len("très défavorable")]
+        or "complètement défavorable"
+        in str(d).lower()[: len("complètement défavorable")]
+        or "avis défavorable" in str(d).lower()[: len("avis défavorable")]
+        or "avis très défavorable" in str(d).lower()[: len("avis très défavorable")]
     )
     responses.loc[avis_defavorable, "opinion"] = "Défavorable"
 
@@ -600,6 +590,18 @@ def pretrain(ctx: click.Context) -> None:
     )
     logging.info(f"Sauvegarde des commentaires défavorables dans {csv_file}")
     responses[avis_defavorable].to_csv(csv_file, header=True, sep=";", index=False)
+    # Suppression des commentaires défavorables
+    responses = responses[~avis_defavorable].reset_index(drop=True)
+    logging.info(f"Nombre de commentaires restants : {len(responses)} (avis inconnus)")
+
+    # Il ne reste que les commentaires sans avis
+    logging.info(f"Nombre de commentaires sans avis : {len(responses)}")
+    responses.opinion = "Inconnu"
+    # Sauve les commentaires sans avis dans un fichier
+    csv_file = Path(data_dir + "/preprocessed/" + consultation + "_avis_inconnu.csv")
+    logging.info(f"Sauvegarde des commentaires sans avis dans {csv_file}")
+    # Ecriture du fichier résultant
+    responses.to_csv(csv_file, header=True, sep=";", index=False)
 
 
 @main.command()
@@ -610,28 +612,21 @@ def classify(ctx: click.Context) -> None:
     consultation = ctx.obj["CONSULTATION"]
     data_dir = ctx.obj["DATA_DIRECTORY"]
 
-    # Lecture des commentaires
-    csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
-    responses = pd.read_csv(csv_file, header=0, sep=";")
-    logging.info(
-        f"Lecture de {len(responses)} commentaires prétraités depuis {csv_file}"
-    )
-
     # Lecture des commentaires annotés
     csv_file = Path(data_dir + "/preprocessed/" + consultation + "_avis_favorable.csv")
     if csv_file.is_file():
         logging.info(f"Lecture des commentaires favorables depuis {csv_file}")
         favorable = pd.read_csv(csv_file, header=0, sep=";")
     else:
-        logging.warning(f"Pas de fichier annoté {csv_file}")
+        logging.warning(f"Pas de fichier avis_favorable {csv_file}")
     csv_file = Path(
         data_dir + "/preprocessed/" + consultation + "_avis_defavorable.csv"
     )
     if csv_file.is_file():
-        logging.info(f"Lecture des commentaires favorables depuis {csv_file}")
+        logging.info(f"Lecture des commentaires défavorables depuis {csv_file}")
         defavorable = pd.read_csv(csv_file, header=0, sep=";")
     else:
-        logging.warning(f"Pas de fichier annoté {csv_file}")
+        logging.warning(f"Pas de fichier avis_defavorable {csv_file}")
 
     csv_file = Path(data_dir + "/preprocessed/" + consultation + "_annotated.csv")
     if csv_file.is_file():
@@ -639,86 +634,186 @@ def classify(ctx: click.Context) -> None:
         annotated = pd.read_csv(csv_file, header=0, sep=";")
         annotated = annotated.dropna(subset=["opinion"])
     else:
-        logging.warning(f"Pas de fichier annoté {csv_file}")
+        logging.warning(f"Pas de fichier annoted {csv_file}")
+        annotated = pd.DataFrame(columns=favorable.columns)
     # Concaténation des commentaires annotés
     annotated = pd.concat([favorable, defavorable, annotated], ignore_index=True)
 
-    nb_comments = len(annotated)
+    # Lecture des commentaires sans avis
+    csv_file = Path(data_dir + "/preprocessed/" + consultation + "_avis_inconnu.csv")
+    inconnu = pd.read_csv(csv_file, header=0, sep=";")
+
+    # Concaténation des commentaires annotés
+    responses = pd.concat([favorable, defavorable, inconnu], ignore_index=True)
+    logging.info(f"Lecture de {len(responses)} commentaires prétraités")
+
+    nb_comments = len(responses)
+    nb_annotés = len(annotated)
     nb_favorable = len(annotated[annotated.opinion == "Favorable"])
     nb_defavorable = len(annotated[annotated.opinion == "Défavorable"])
-    logging.info(f"Nombre de commentaires annotés : {nb_comments}")
+    nb_inconnnu = len(inconnu)
     logging.info(
-        f"Nombre de commentaires favorables : {nb_favorable} ({nb_favorable / nb_comments * 100:.2f}%)"
+        f"Nombre de commentaires totaux : {nb_comments}, annotés : {nb_annotés}"
     )
     logging.info(
-        f"Nombre de commentaires défavorables : {nb_defavorable} ({nb_defavorable / nb_comments * 100:.2f}%)"
+        f"Nombre de commentaires favorables : {nb_favorable} ({nb_favorable / nb_comments * 100:.2f}% du total, {nb_favorable / nb_annotés * 100:.2f}% des annotés)"
+    )
+    logging.info(
+        f"Nombre de commentaires défavorables : {nb_defavorable} ({nb_defavorable / nb_comments * 100:.2f}% du total, {nb_defavorable / nb_annotés * 100:.2f}% des annotés)"
+    )
+    logging.info(
+        f"Nombre de commentaires inconnus : {nb_inconnnu} ({nb_inconnnu / nb_comments * 100:.2f}%)"
     )
 
     # Création du modèle de classification
-    logging.info("Création du modèle de classification")
-    logging.info("Vectorisation des textes")
+    logging.info("Vectorisation des textes pré-traités")
     responses.lemma = responses.lemma.fillna(value="Neutre")
-    stop = ["arrete", "avis"]
+    stop = ["arrete", "avis", "decret", "loup"]
     tfidf_vectorizer = TfidfVectorizer(
         decode_error="ignore",  # Ignore decoding errors
         strip_accents="unicode",  # Normalize accents
         lowercase=False,
-        max_df=0.95,  # Ignore terms that appear in more than x% of the documents
-        min_df=0.05,  # Ignore terms that appear in less than x% of the documents
+        max_df=0.98,  # Ignore terms that appear in more than x% of the documents
+        min_df=5,  # Ignore terms that appear in less than n documents
         stop_words=stop,
         use_idf=True,
         ngram_range=(1, 3),
     )
     # Fit vectoriser to NLP processed column
     tfidf_matrix = tfidf_vectorizer.fit_transform(responses.lemma)
-    logging.info(f"TF-IDF (n_samples, n_features): {tfidf_matrix.shape}")
+    logging.info(f"TF-IDF sur tous les commentaires, dimensions : {tfidf_matrix.shape}")
 
+    # Sous-échantillonnage des commentaires majoritaires
+    logging.info("Sous-échantillonnage des commentaires majoritaires")
+    rus = RandomUnderSampler(sampling_strategy=0.5, random_state=42)
+    x_res, y_res = rus.fit_resample(
+        tfidf_vectorizer.transform(annotated.lemma), annotated.opinion
+    )
+
+    logging.info(f"Dimensions sous-échantillonnées : {x_res.shape}")
+    logging.info(f"Forme initiale : {Counter(annotated.opinion)}")
+    logging.info(f"Forme sous-échantillonnée : {Counter(y_res)}")
     # Séparation des données en train et test
-    logging.info("Séparation des données en train et test")
+    logging.info("Séparation des données en entrainement et test")
     x_train, x_test, y_train, y_test = train_test_split(
-        annotated.lemma, annotated.opinion, test_size=0.3
+        x_res, y_res, test_size=0.2, random_state=42
     )
-    logging.info(f"Train set size: {len(x_train)}, Test set size: {len(x_test)}")
+    logging.info(
+        f"Dimensions initiale, Entrainement : {x_train.shape}, Test : {x_test.shape}"
+    )
 
     # Entraînement du modèle
-    logging.info("Entraînement du modèle de classification")
-    classifier = LogisticRegression()
-    # Create pipeline using Bag of Words
-    pipe = Pipeline(
-        [
-            ("vectorizer", tfidf_vectorizer),
-            ("classifier", classifier),
-        ]
+    logging.info(
+        "Entraînement du modèle de classification RandomForestClassifier(gini)"
     )
-    # Entraînement du modèle
-    pipe.fit(x_train, y_train)
+    # classifier = LogisticRegression()
+    classifier = RandomForestClassifier(
+        criterion="gini", n_estimators=100, random_state=42
+    )
+    # classifier = LinearSVC
+
+    # Entraînement du modèle sur le jeu sous-échantillonné
+    logging.info(
+        f"Entraînement du modèle sur le jeu sous-échantillonné : {x_train.shape}"
+    )
+    classifier.fit(x_train, y_train)
     # Prédiction sur le jeu de test
-    logging.info("Prédiction sur le jeu de test")
-    y_pred = pipe.predict(x_test)
+    logging.info(f"Prédiction sur le jeu de test sous-échantillonné : {x_test.shape}")
+    y_pred = classifier.predict(x_test)
     logging.info(f"Accuracy du modèle : {metrics.accuracy_score(y_test, y_pred)}")
+    logging.info(
+        f"Rapport de classification :\n{metrics.classification_report(y_test, y_pred, labels=['Favorable', 'Défavorable'], digits=4)}"
+    )
     logging.info(
         f"Confusion matrix :\n{metrics.confusion_matrix(y_test, y_pred, labels=['Favorable', 'Défavorable'])}"
     )
+    logging.info(
+        f"Confusion matrix :\n{metrics.confusion_matrix(y_test, y_pred, labels=['Favorable', 'Défavorable'], normalize='all')}"
+    )
 
-    # Prédiction sur l'ensemble des commentaires
-    logging.info("Prédiction sur l'ensemble des commentaires")
-    responses["Opinion_estimée"] = pipe.predict(responses.lemma)
+    # Prédiction sur tous les commentaires
+    logging.info("Prédiction sur tous les commentaires")
+    responses["Opinion_estimée"] = classifier.predict(tfidf_matrix)
     nb_favorable = len(responses[responses.Opinion_estimée == "Favorable"])
     nb_defavorable = len(responses[responses.Opinion_estimée == "Défavorable"])
-    nb_neutre = len(responses[responses.Opinion_estimée == "Neutre"])
     logging.info(
         f"Nombre de commentaires favorables : {nb_favorable} ({nb_favorable / len(responses) * 100:.2f}%)"
     )
     logging.info(
         f"Nombre de commentaires défavorables : {nb_defavorable} ({nb_defavorable / len(responses) * 100:.2f}%)"
     )
+    # Forcage des avis connus
+    logging
+    responses.loc[responses.opinion == "Favorable", "Opinion_estimée"] = "Favorable"
+    responses.loc[responses.opinion == "Défavorable", "Opinion_estimée"] = "Défavorable"
+    nb_favorable = len(responses[responses.Opinion_estimée == "Favorable"])
+    nb_defavorable = len(responses[responses.Opinion_estimée == "Défavorable"])
     logging.info(
-        f"Nombre de commentaires neutres : {nb_neutre} ({nb_neutre / len(responses) * 100:.2f}%)"
+        f"Nombre de commentaires favorables : {nb_favorable} ({nb_favorable / len(responses) * 100:.2f}%)"
+    )
+    logging.info(
+        f"Nombre de commentaires défavorables : {nb_defavorable} ({nb_defavorable / len(responses) * 100:.2f}%)"
     )
     # Ecriture du fichier résultant
     csv_file = Path(data_dir + "/processed/" + consultation + ".csv")
     logging.info(f"Ecriture dans {csv_file}")
     responses.to_csv(csv_file, header=True, sep=";", index=False)
+
+
+@main.command()
+@click.pass_context
+def classtest(ctx: click.Context) -> None:
+    """Test de classification des commentaires."""
+    logging.info("Test de classification des commentaires")
+    from sklearn.datasets import fetch_20newsgroups
+
+    # Load dataset
+    newsgroups = fetch_20newsgroups(
+        subset="all",
+        categories=["sci.space", "rec.sport.baseball"],
+        shuffle=True,
+        random_state=42,
+    )
+    data = newsgroups.data
+    target = newsgroups.target
+    logging.info(f"Nombre de documents : {len(data)}")
+    # Create a DataFrame for easy manipulation
+    df = pd.DataFrame({"text": data, "label": target})
+    # print(df.head())
+
+    # Initialize TF-IDF Vectorizer
+    vectorizer = TfidfVectorizer(stop_words="english", max_df=0.7)
+
+    # Transform the text data to feature vectors
+    X = vectorizer.fit_transform(df.text)
+    print(f"TF-IDF matrix shape: {X.shape}")
+
+    # Labels
+    y = df.label
+
+    # Split the dataset into training and testing sets
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.3, random_state=42
+    )
+
+    # Initialize and train the classifier
+    clf = LogisticRegression()
+    print(f"Training LogisticRegression classifier on {X_train.shape} samples")
+    clf.fit(X_train, y_train)
+
+    # Predict on the test set
+    print(f"Predicting on the test set {X_test.shape}")
+    y_pred = clf.predict(X_test)
+
+    # Evaluate the performance
+    accuracy = metrics.accuracy_score(y_test, y_pred)
+    report = metrics.classification_report(
+        y_test, y_pred, target_names=newsgroups.target_names
+    )
+
+    print(f"Accuracy: {accuracy:.4f}")
+    print("Classification Report:")
+    print(report)
 
 
 if __name__ == "__main__":
