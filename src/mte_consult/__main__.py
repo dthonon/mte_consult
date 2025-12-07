@@ -7,6 +7,7 @@ import re
 import time
 from collections import Counter
 from functools import partial
+from unidecode import unidecode
 
 # import unicodedata
 from pathlib import Path
@@ -29,7 +30,9 @@ from sklearn.cluster import (
 from sklearn.feature_extraction.text import TfidfVectorizer  # type: ignore
 from sklearn.linear_model import LogisticRegression  # type: ignore
 from sklearn.ensemble import RandomForestClassifier  # type: ignore
+from sklearn.naive_bayes import ComplementNB  # type: ignore
 from sklearn.svm import LinearSVC  # type: ignore
+from sklearn.model_selection import RandomizedSearchCV, GridSearchCV  # type: ignore
 from sklearn.model_selection import train_test_split  # type: ignore
 from sklearn.pipeline import Pipeline  # type: ignore
 from spacy.tokenizer import Tokenizer  # type: ignore
@@ -111,7 +114,7 @@ def retrieve(ctx: click.Context) -> None:
     csv_file = Path(data_dir + "/raw/" + consultation + ".csv")
     if csv_file.is_file():
         logging.debug(f"Lecture des téléchargements depuis {csv_file}")
-        responses = pd.read_csv(csv_file, header=0, sep=";")
+        responses = pd.read_csv(csv_file, header=0, sep=";", encoding="utf-8-sig")
     else:
         logging.debug("Pas de téléchargement précédents")
         responses = pd.DataFrame()
@@ -225,7 +228,9 @@ def retrieve(ctx: click.Context) -> None:
                     f"Nb de nouveaux commentaires : {len(responses) - pre_drop}/{len(commentaires)}, total : {len(responses)}/{max_com}"
                 )
                 logging.debug(f"Ecriture dans {csv_file}")
-                responses.to_csv(csv_file, header=True, sep=";", index=False)
+                responses.to_csv(
+                    csv_file, header=True, sep=";", index=False, encoding="utf-8-sig"
+                )
                 time.sleep(10)
             except (
                 requests.exceptions.ConnectionError,
@@ -340,7 +345,9 @@ def preprocess(ctx: click.Context) -> None:
     logging.info(f"Prétraitement de {consultation} dans {data_dir}")
     csv_file = Path(data_dir + "/raw/" + consultation + ".csv")
     logging.debug("Lecture %s", csv_file)
-    responses = pd.read_csv(csv_file, header=0, sep=";", names=["sujet", "texte"])
+    responses = pd.read_csv(
+        csv_file, header=0, sep=";", names=["sujet", "texte"], encoding="utf-8-sig"
+    )
     logging.info(f"Nombre de commentaires bruts : {len(responses)}")
 
     # Découpe du sujet en éléments
@@ -444,13 +451,13 @@ def preprocess(ctx: click.Context) -> None:
     # Ecriture du fichier des corrections orthographiques
     csv_file = Path(data_dir + "/preprocessed/" + consultation + "_corrected.csv")
     logging.debug(f"Ecriture dans {csv_file}")
-    corrected.to_csv(csv_file, header=True, sep=";", index=False)
+    corrected.to_csv(csv_file, header=True, sep=";", index=False, encoding="utf-8-sig")
 
     # Ecriture du fichier résultant
     csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
     logging.debug(f"Ecriture dans {csv_file}")
     responses.sort_values(by="dateheure", ignore_index=True).to_csv(
-        csv_file, header=True, sep=";", index=False
+        csv_file, header=True, sep=";", index=False, encoding="utf-8-sig"
     )
 
 
@@ -465,7 +472,7 @@ def cluster(ctx: click.Context) -> None:
 
     csv_file = Path(data_dir + "/processed/" + consultation + ".csv")
     logging.debug(f"Lecture de {csv_file}")
-    responses = pd.read_csv(csv_file, header=0, sep=";")
+    responses = pd.read_csv(csv_file, header=0, sep=";", encoding="utf-8-sig")
     logging.info(f"Nombre de commentaires prétraités : {len(responses)}")
 
     logging.info("Vectorisation des textes")
@@ -535,7 +542,7 @@ def pretrain(ctx: click.Context) -> None:
     # Lecture des commentaires
     csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
     if csv_file:
-        responses = pd.read_csv(csv_file, header=0, sep=";")
+        responses = pd.read_csv(csv_file, header=0, sep=";", encoding="utf-8-sig")
         logging.info(
             f"Lecture de {len(responses)} commentaires prétraités depuis {csv_file}"
         )
@@ -553,7 +560,9 @@ def pretrain(ctx: click.Context) -> None:
     avis_favorable = responses.checked_text.apply(
         lambda d: "avis favorable" in str(d).lower()[: len("avis favorable")]
         or "favorable" in str(d).lower()[: len("favorable")]
-        or "avis très favorable" in str(d).lower()[: len("avis très favorable")]
+        or "tres favorable" in unidecode(str(d).lower()[: len("tres favorable")])
+        or "avis tres favorable"
+        in unidecode(str(d).lower()[: len("avis tres favorable")])
     )
     logging.info(
         f"Nombre de commentaires avec avis favorable : {len(responses[avis_favorable])}"
@@ -562,7 +571,9 @@ def pretrain(ctx: click.Context) -> None:
     # Sauve les commentaires favorables dans un fichier
     csv_file = Path(data_dir + "/preprocessed/" + consultation + "_avis_favorable.csv")
     logging.info(f"Sauvegarde des commentaires favorables dans {csv_file}")
-    responses[avis_favorable].to_csv(csv_file, header=True, sep=";", index=False)
+    responses[avis_favorable].to_csv(
+        csv_file, header=True, sep=";", index=False, encoding="utf-8-sig"
+    )
     # Suppression des commentaires favorables
     responses = responses[~avis_favorable].reset_index(drop=True)
     logging.info(
@@ -572,12 +583,20 @@ def pretrain(ctx: click.Context) -> None:
     # Séparation des commentaires défavorables
     avis_defavorable = responses.checked_text.apply(
         lambda d: "non favorable" in str(d).lower()[: len("non favorable")]
-        or "défavorable" in str(d).lower()[: len("défavorable")]
-        or "très défavorable" in str(d).lower()[: len("très défavorable")]
-        or "complètement défavorable"
-        in str(d).lower()[: len("complètement défavorable")]
-        or "avis défavorable" in str(d).lower()[: len("avis défavorable")]
-        or "avis très défavorable" in str(d).lower()[: len("avis très défavorable")]
+        or "defavorable" in unidecode(str(d).lower()[: len("defavorable")])
+        or "nombre defavorable"
+        in unidecode(str(d).lower()[: len("nombre defavorable")])
+        or "tres defavorable" in unidecode(str(d).lower()[: len("tres defavorable")])
+        or "totalement defavorable"
+        in unidecode(str(d).lower()[: len("totalement defavorable")])
+        or "completement defavorable"
+        in unidecode(str(d).lower()[: len("completement defavorable")])
+        or "contre" in str(d).lower()[: len("contre")]
+        or "avis defavorable" in unidecode(str(d).lower()[: len("avis defavorable")])
+        or "avis tres defavorable"
+        in unidecode(str(d).lower()[: len("avis tres defavorable")])
+        or "avis totalement defavorable"
+        in unidecode(str(d).lower()[: len("avis totalement defavorable")])
     )
     responses.loc[avis_defavorable, "opinion"] = "Défavorable"
 
@@ -589,7 +608,9 @@ def pretrain(ctx: click.Context) -> None:
         data_dir + "/preprocessed/" + consultation + "_avis_defavorable.csv"
     )
     logging.info(f"Sauvegarde des commentaires défavorables dans {csv_file}")
-    responses[avis_defavorable].to_csv(csv_file, header=True, sep=";", index=False)
+    responses[avis_defavorable].to_csv(
+        csv_file, header=True, sep=";", index=False, encoding="utf-8-sig"
+    )
     # Suppression des commentaires défavorables
     responses = responses[~avis_defavorable].reset_index(drop=True)
     logging.info(f"Nombre de commentaires restants : {len(responses)} (avis inconnus)")
@@ -601,7 +622,7 @@ def pretrain(ctx: click.Context) -> None:
     csv_file = Path(data_dir + "/preprocessed/" + consultation + "_avis_inconnu.csv")
     logging.info(f"Sauvegarde des commentaires sans avis dans {csv_file}")
     # Ecriture du fichier résultant
-    responses.to_csv(csv_file, header=True, sep=";", index=False)
+    responses.to_csv(csv_file, header=True, sep=";", index=False, encoding="utf-8-sig")
 
 
 @main.command()
@@ -624,14 +645,14 @@ def classify(ctx: click.Context) -> None:
     )
     if csv_file.is_file():
         logging.info(f"Lecture des commentaires défavorables depuis {csv_file}")
-        defavorable = pd.read_csv(csv_file, header=0, sep=";")
+        defavorable = pd.read_csv(csv_file, header=0, sep=";", encoding="utf-8-sig")
     else:
         logging.warning(f"Pas de fichier avis_defavorable {csv_file}")
 
     csv_file = Path(data_dir + "/preprocessed/" + consultation + "_annotated.csv")
     if csv_file.is_file():
         logging.info(f"Lecture des commentaires annotés depuis {csv_file}")
-        annotated = pd.read_csv(csv_file, header=0, sep=";")
+        annotated = pd.read_csv(csv_file, header=0, sep=";", encoding="utf-8-sig")
         annotated = annotated.dropna(subset=["opinion"])
     else:
         logging.warning(f"Pas de fichier annoted {csv_file}")
@@ -641,7 +662,7 @@ def classify(ctx: click.Context) -> None:
 
     # Lecture des commentaires sans avis
     csv_file = Path(data_dir + "/preprocessed/" + consultation + "_avis_inconnu.csv")
-    inconnu = pd.read_csv(csv_file, header=0, sep=";")
+    inconnu = pd.read_csv(csv_file, header=0, sep=";", encoding="utf-8-sig")
 
     # Concaténation des commentaires annotés
     responses = pd.concat([favorable, defavorable, inconnu], ignore_index=True)
@@ -664,35 +685,18 @@ def classify(ctx: click.Context) -> None:
     logging.info(
         f"Nombre de commentaires inconnus : {nb_inconnnu} ({nb_inconnnu / nb_comments * 100:.2f}%)"
     )
-
-    # Création du modèle de classification
-    logging.info("Vectorisation des textes pré-traités")
     responses.lemma = responses.lemma.fillna(value="Neutre")
-    stop = ["arrete", "avis", "decret", "loup"]
-    tfidf_vectorizer = TfidfVectorizer(
-        decode_error="ignore",  # Ignore decoding errors
-        strip_accents="unicode",  # Normalize accents
-        lowercase=False,
-        max_df=0.98,  # Ignore terms that appear in more than x% of the documents
-        min_df=5,  # Ignore terms that appear in less than n documents
-        stop_words=stop,
-        use_idf=True,
-        ngram_range=(1, 3),
-    )
-    # Fit vectoriser to NLP processed column
-    tfidf_matrix = tfidf_vectorizer.fit_transform(responses.lemma)
-    logging.info(f"TF-IDF sur tous les commentaires, dimensions : {tfidf_matrix.shape}")
 
     # Sous-échantillonnage des commentaires majoritaires
     logging.info("Sous-échantillonnage des commentaires majoritaires")
-    rus = RandomUnderSampler(sampling_strategy=0.5, random_state=42)
-    x_res, y_res = rus.fit_resample(
-        tfidf_vectorizer.transform(annotated.lemma), annotated.opinion
-    )
+    rus = RandomUnderSampler(random_state=42, sampling_strategy=0.5)
+    x_res, y_res = rus.fit_resample(annotated[["titre", "lemma"]], annotated.opinion)
+    x_res = x_res.lemma
 
     logging.info(f"Dimensions sous-échantillonnées : {x_res.shape}")
     logging.info(f"Forme initiale : {Counter(annotated.opinion)}")
     logging.info(f"Forme sous-échantillonnée : {Counter(y_res)}")
+
     # Séparation des données en train et test
     logging.info("Séparation des données en entrainement et test")
     x_train, x_test, y_train, y_test = train_test_split(
@@ -702,24 +706,136 @@ def classify(ctx: click.Context) -> None:
         f"Dimensions initiale, Entrainement : {x_train.shape}, Test : {x_test.shape}"
     )
 
-    # Entraînement du modèle
-    logging.info(
-        "Entraînement du modèle de classification RandomForestClassifier(gini)"
+    # Création du modèle de classification
+    stop = ["arrete", "avis", "decret", "loup"]
+    pipeline_rf = Pipeline(
+        [
+            (
+                "vect",
+                TfidfVectorizer(
+                    stop_words=stop,
+                    decode_error="ignore",
+                    lowercase=False,
+                    strip_accents="unicode",
+                    ngram_range=(1, 2),
+                    max_df=0.55,
+                    min_df=30,
+                ),
+            ),
+            (
+                "classifier",
+                RandomForestClassifier(
+                    criterion="gini",
+                    max_depth=None,
+                    min_samples_leaf=1,
+                    min_samples_split=5,
+                    n_estimators=300,
+                    random_state=42,
+                ),
+            ),
+        ]
     )
-    # classifier = LogisticRegression()
-    classifier = RandomForestClassifier(
-        criterion="gini", n_estimators=100, random_state=42
+    pipeline_svc = Pipeline(
+        [
+            (
+                "vect",
+                TfidfVectorizer(
+                    stop_words=stop,
+                    decode_error="ignore",
+                    lowercase=False,
+                    strip_accents="unicode",
+                    ngram_range=(1, 2),
+                    max_df=0.55,
+                    min_df=30,
+                ),
+            ),
+            (
+                "classifier",
+                # ComplementNB(),
+                LinearSVC(random_state=42),
+            ),
+        ]
     )
-    # classifier = LinearSVC
+    pipeline_nb = Pipeline(
+        [
+            (
+                "vect",
+                TfidfVectorizer(
+                    stop_words=stop,
+                    decode_error="ignore",
+                    lowercase=False,
+                    strip_accents="unicode",
+                    ngram_range=(1, 2),
+                    max_df=0.55,
+                    min_df=30,
+                ),
+            ),
+            (
+                "classifier",
+                ComplementNB(),
+            ),
+        ]
+    )
+
+    # # Define pipelines  and their parameter grids
+    # pipelines_params = {
+    #     "SVC_Pipeline": {
+    #         "pipeline": pipeline_svc,
+    #         "params": {
+    #             "classifier__C": [0.1, 1, 10],
+    #         },
+    #     },
+    #     "RandomForest_Pipeline": {
+    #         "pipeline": pipeline_rf,
+    #         "params": {
+    #             "classifier__n_estimators": [200, 300, 400],
+    #         },
+    #     },
+    #     "NaiveBayes_Pipeline": {
+    #         "pipeline": pipeline_nb,
+    #         "params": {
+    #             "classifier__alpha": np.logspace(2, 6, 5),
+    #         },
+    #     },
+    # }
+
+    # results = {}
+    # print("--- Starting Pipeline Tuning (with inner parallelism) ---")
+    # for pipeline_name, config in pipelines_params.items():
+    #     print(f"Tuning {pipeline_name}...")
+    #     grid_search = GridSearchCV(
+    #         config["pipeline"],
+    #         config["params"],
+    #         cv=5,
+    #         scoring="f1_weighted",
+    #         n_jobs=-1,  # Use all available cores for THIS GridSearchCV run
+    #     )
+    #     grid_search.fit(x_train, y_train)
+    #     results[pipeline_name] = {
+    #         "best_score": grid_search.best_score_,
+    #         "best_params": grid_search.best_params_,
+    #         "best_estimator": grid_search.best_estimator_,
+    #     }
+    #     print(f"Finished {pipeline_name}. Best score: {grid_search.best_score_:.4f}")
+
+    # # Display results
+    # print("\n--- Pipeline Tuning Results ---")
+    # for pipeline_name, res in results.items():
+    #     print(f"\nPipeline: {pipeline_name}")
+    #     print(f" Best Score: {res['best_score']:.4f}")
+    #     print(f" Best Params: {res['best_params']}")
 
     # Entraînement du modèle sur le jeu sous-échantillonné
+    pipeline = pipeline_rf
     logging.info(
         f"Entraînement du modèle sur le jeu sous-échantillonné : {x_train.shape}"
     )
-    classifier.fit(x_train, y_train)
+
+    pipeline.fit(x_train, y_train)
+
     # Prédiction sur le jeu de test
     logging.info(f"Prédiction sur le jeu de test sous-échantillonné : {x_test.shape}")
-    y_pred = classifier.predict(x_test)
+    y_pred = pipeline.predict(x_test)
     logging.info(f"Accuracy du modèle : {metrics.accuracy_score(y_test, y_pred)}")
     logging.info(
         f"Rapport de classification :\n{metrics.classification_report(y_test, y_pred, labels=['Favorable', 'Défavorable'], digits=4)}"
@@ -733,7 +849,7 @@ def classify(ctx: click.Context) -> None:
 
     # Prédiction sur tous les commentaires
     logging.info("Prédiction sur tous les commentaires")
-    responses["Opinion_estimée"] = classifier.predict(tfidf_matrix)
+    responses["Opinion_estimée"] = pipeline.predict(responses.lemma)
     nb_favorable = len(responses[responses.Opinion_estimée == "Favorable"])
     nb_defavorable = len(responses[responses.Opinion_estimée == "Défavorable"])
     logging.info(
@@ -742,8 +858,10 @@ def classify(ctx: click.Context) -> None:
     logging.info(
         f"Nombre de commentaires défavorables : {nb_defavorable} ({nb_defavorable / len(responses) * 100:.2f}%)"
     )
+    logging.info(
+        f"Confusion matrix :\n{metrics.confusion_matrix(responses.opinion, responses.Opinion_estimée)}"
+    )
     # Forcage des avis connus
-    logging
     responses.loc[responses.opinion == "Favorable", "Opinion_estimée"] = "Favorable"
     responses.loc[responses.opinion == "Défavorable", "Opinion_estimée"] = "Défavorable"
     nb_favorable = len(responses[responses.Opinion_estimée == "Favorable"])
@@ -757,63 +875,7 @@ def classify(ctx: click.Context) -> None:
     # Ecriture du fichier résultant
     csv_file = Path(data_dir + "/processed/" + consultation + ".csv")
     logging.info(f"Ecriture dans {csv_file}")
-    responses.to_csv(csv_file, header=True, sep=";", index=False)
-
-
-@main.command()
-@click.pass_context
-def classtest(ctx: click.Context) -> None:
-    """Test de classification des commentaires."""
-    logging.info("Test de classification des commentaires")
-    from sklearn.datasets import fetch_20newsgroups
-
-    # Load dataset
-    newsgroups = fetch_20newsgroups(
-        subset="all",
-        categories=["sci.space", "rec.sport.baseball"],
-        shuffle=True,
-        random_state=42,
-    )
-    data = newsgroups.data
-    target = newsgroups.target
-    logging.info(f"Nombre de documents : {len(data)}")
-    # Create a DataFrame for easy manipulation
-    df = pd.DataFrame({"text": data, "label": target})
-    # print(df.head())
-
-    # Initialize TF-IDF Vectorizer
-    vectorizer = TfidfVectorizer(stop_words="english", max_df=0.7)
-
-    # Transform the text data to feature vectors
-    X = vectorizer.fit_transform(df.text)
-    print(f"TF-IDF matrix shape: {X.shape}")
-
-    # Labels
-    y = df.label
-
-    # Split the dataset into training and testing sets
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.3, random_state=42
-    )
-
-    # Initialize and train the classifier
-    clf = LogisticRegression()
-    print(f"Training LogisticRegression classifier on {X_train.shape} samples")
-    clf.fit(X_train, y_train)
-
-    # Predict on the test set
-    print(f"Predicting on the test set {X_test.shape}")
-    y_pred = clf.predict(X_test)
-
-    # Evaluate the performance
-    accuracy = metrics.accuracy_score(y_test, y_pred)
-    report = metrics.classification_report(
-        y_test, y_pred, target_names=newsgroups.target_names
-    )
-
-    print(f"Accuracy: {accuracy:.4f}")
-    print("Classification Report:")
-    print(report)
+    responses.to_csv(csv_file, header=True, sep=";", index=False, encoding="utf-8-sig")
 
 
 if __name__ == "__main__":
