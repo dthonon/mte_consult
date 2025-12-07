@@ -35,6 +35,7 @@ spacy-streamlit = ">=1.0"
 # fr-projet-arrete-tirs = { path = "models/projet_arrêté_tirs/packages/fr_projet_arrete_tirs-0.0.1/dist/fr_projet_arrete_tirs-0.0.1.tar.gz" }
 imbalanced-learn = "^0.14.0"
 unidecode = "^1.4.0"
+seaborn = "^0.13.2"
 
 [tool.poetry.dev-dependencies]
 Pygments = ">=2.10"

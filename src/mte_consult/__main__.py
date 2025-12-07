@@ -37,6 +37,8 @@ from sklearn.model_selection import train_test_split  # type: ignore
 from sklearn.pipeline import Pipeline  # type: ignore
 from spacy.tokenizer import Tokenizer  # type: ignore
 from textacy import preprocessing
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # Constantes
 NB_COMMENTS = 20  # Nombre de commentaires par page
@@ -563,6 +565,12 @@ def pretrain(ctx: click.Context) -> None:
         or "tres favorable" in unidecode(str(d).lower()[: len("tres favorable")])
         or "avis tres favorable"
         in unidecode(str(d).lower()[: len("avis tres favorable")])
+        or "avis nombre favorable"
+        in unidecode(str(d).lower()[: len("avis nombre favorable")])
+        or "avis fortement favorable"
+        in unidecode(str(d).lower()[: len("avis fortement favorable")])
+        or "avis tres favorable"
+        in unidecode(str(d).lower()[: len("avis tres favorable")])
     )
     logging.info(
         f"Nombre de commentaires avec avis favorable : {len(responses[avis_favorable])}"
@@ -589,12 +597,24 @@ def pretrain(ctx: click.Context) -> None:
         or "tres defavorable" in unidecode(str(d).lower()[: len("tres defavorable")])
         or "totalement defavorable"
         in unidecode(str(d).lower()[: len("totalement defavorable")])
+        or "extremement defavorable"
+        in unidecode(str(d).lower()[: len("extremement defavorable")])
         or "completement defavorable"
         in unidecode(str(d).lower()[: len("completement defavorable")])
         or "contre" in str(d).lower()[: len("contre")]
         or "avis defavorable" in unidecode(str(d).lower()[: len("avis defavorable")])
         or "avis tres defavorable"
         in unidecode(str(d).lower()[: len("avis tres defavorable")])
+        or "avis tres tres defavorable"
+        in unidecode(str(d).lower()[: len("avis tres tres defavorable")])
+        or "avis nombre defavorable"
+        in unidecode(str(d).lower()[: len("avis nombre defavorable")])
+        or "avis completement defavorable"
+        in unidecode(str(d).lower()[: len("avis completement defavorable")])
+        or "avis absolument defavorable"
+        in unidecode(str(d).lower()[: len("avis absolument defavorable")])
+        or "avis extremement defavorable"
+        in unidecode(str(d).lower()[: len("avis extremement defavorable")])
         or "avis totalement defavorable"
         in unidecode(str(d).lower()[: len("avis totalement defavorable")])
     )
@@ -637,7 +657,7 @@ def classify(ctx: click.Context) -> None:
     csv_file = Path(data_dir + "/preprocessed/" + consultation + "_avis_favorable.csv")
     if csv_file.is_file():
         logging.info(f"Lecture des commentaires favorables depuis {csv_file}")
-        favorable = pd.read_csv(csv_file, header=0, sep=";")
+        favorable = pd.read_csv(csv_file, header=0, sep=";", encoding="utf-8-sig")
     else:
         logging.warning(f"Pas de fichier avis_favorable {csv_file}")
     csv_file = Path(
@@ -827,9 +847,8 @@ def classify(ctx: click.Context) -> None:
 
     # Entraînement du modèle sur le jeu sous-échantillonné
     pipeline = pipeline_rf
-    logging.info(
-        f"Entraînement du modèle sur le jeu sous-échantillonné : {x_train.shape}"
-    )
+    logging.info(f"Modèle : {pipeline}")
+    logging.info(f"Entraînement sur le jeu sous-échantillonné : {x_train.shape}")
 
     pipeline.fit(x_train, y_train)
 
@@ -876,6 +895,45 @@ def classify(ctx: click.Context) -> None:
     csv_file = Path(data_dir + "/processed/" + consultation + ".csv")
     logging.info(f"Ecriture dans {csv_file}")
     responses.to_csv(csv_file, header=True, sep=";", index=False, encoding="utf-8-sig")
+
+
+@main.command()
+@click.pass_context
+def report(ctx: click.Context) -> None:
+    """Rapport sur les tendances des commentaires."""
+    logging.info("Rapport sur les tendances des commentaires")
+    consultation = ctx.obj["CONSULTATION"]
+    data_dir = ctx.obj["DATA_DIRECTORY"]
+
+    # Lecture des commentaires annotés
+    csv_file = Path(data_dir + "/processed/" + consultation + ".csv")
+    if csv_file.is_file():
+        logging.info(f"Lecture des commentaires classifiés depuis {csv_file}")
+        commentaires = pd.read_csv(
+            csv_file,
+            header=0,
+            sep=";",
+            encoding="utf-8-sig",
+            parse_dates=["dateheure"],
+        )
+    else:
+        logging.warning(f"Pas de fichier {csv_file}")
+
+    commentaires["date"] = commentaires.dateheure.dt.date
+    print(commentaires.groupby(["date", "Opinion_estimée"]).size().unstack().fillna(0))
+    sns.histplot(
+        data=commentaires,
+        x="date",
+        hue="Opinion_estimée",
+        multiple="stack",
+        bins=21,
+    )
+    plt.title("Répartition des commentaires dans le temps")
+    plt.xlabel("Date")
+    plt.ylabel("Nombre de commentaires")
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.savefig(f"plots/{consultation}_comments_over_time.png")
 
 
 if __name__ == "__main__":
