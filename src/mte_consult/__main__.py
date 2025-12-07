@@ -275,34 +275,6 @@ def _spell_correction(doc: Tokenizer, spell: Any, corrected: pd.DataFrame) -> st
     return text
 
 
-def _spell_correction2(doc: Tokenizer, spell: Any, corrected: pd.DataFrame) -> str:
-    """Spell correction of misspelled words, pyspellchecker version."""
-    global nb_comm
-    nb_comm += 1
-    if (nb_comm % 100) == 0:
-        logging.info(f"Vérification orthographique de {nb_comm} commentaires")
-    text = ""
-    for d in doc:
-        word = d.text
-        # Spell check meaningfull words only
-        if d.is_space:
-            pass  # Nothing to check
-        elif d.is_stop or d.is_punct or word in spell:
-            text += d.text_with_ws
-        else:
-            sp = spell.correction(word)
-            if sp is not None:
-                corrected.loc[len(corrected)] = {
-                    "raw_text": word,
-                    "checked_text": sp,
-                }
-                text += sp + d.whitespace_
-            else:
-                logging.warning(f"Unable to correct {word}")
-                text += d.text_with_ws
-    return text
-
-
 def _fr_nlp() -> spacy.language.Language:
     # Prepare NLP processing
     logging.info("Préparation du traitement NLP")
@@ -359,9 +331,10 @@ def preprocess(ctx: click.Context) -> None:
     responses = responses[["titre", "dateheure", "texte", "sujet"]]
     locale.setlocale(locale.LC_TIME, "fr_FR.UTF-8")
     responses["dateheure"] = pd.to_datetime(
-        responses["dateheure"], format="%d %B %Y à %Hh%M", errors="coerce"
+        responses["dateheure"].apply(lambda d: d.replace("1er", "1")),
+        format="%d %B %Y à %Hh%M",
+        errors="coerce",
     )
-
     # Suppression des ligne dupliquées
     responses = responses.drop_duplicates(subset=["titre", "texte"])
     logging.info(
@@ -432,14 +405,6 @@ def preprocess(ctx: click.Context) -> None:
     responses["checked_text"] = responses["raw_text"].apply(
         lambda d: _spell_correction(tokenizer(d), spell, corrected)
     )
-    # Correction orthographique avec pyspellchecker => très lent
-    # spell = SpellChecker(language="fr")
-    # if added_words.is_file():
-    #     logging.info(f"Ajout des mots du fichier {added_words}")
-    #     spell.word_frequency.load_text_file(added_words)
-    # responses["checked_text"] = responses["raw_text"].apply(
-    #     lambda d: _spell_correction2(tokenizer(d), spell, corrected)
-    # )
 
     logging.info(f"Nombre de mots corrigés : {len(corrected)}")
     corrected = corrected.drop_duplicates(
@@ -921,17 +886,19 @@ def report(ctx: click.Context) -> None:
 
     commentaires["date"] = commentaires.dateheure.dt.date
     print(commentaires.groupby(["date", "Opinion_estimée"]).size().unstack().fillna(0))
+    plt.figure(figsize=(1024 / 100, 768 / 100), dpi=100)
     sns.histplot(
         data=commentaires,
         x="date",
         hue="Opinion_estimée",
+        palette={"Favorable": "red", "Défavorable": "green"},
         multiple="stack",
         bins=21,
     )
     plt.title("Répartition des commentaires dans le temps")
     plt.xlabel("Date")
     plt.ylabel("Nombre de commentaires")
-    plt.xticks(rotation=45)
+    plt.xticks(rotation=90)
     plt.tight_layout()
     plt.savefig(f"plots/{consultation}_comments_over_time.png")
 
