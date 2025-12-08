@@ -1,19 +1,39 @@
-name: Labeler
+name: labels
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#permissions
+permissions:
+  contents: read
 
 on:
   push:
     branches:
-      - main
-      - master
+      - 'master'
+    paths:
+      - '.github/labels.yml'
+      - '.github/workflows/labels.yml'
+  pull_request:
+    paths:
+      - '.github/labels.yml'
+      - '.github/workflows/labels.yml'
 
 jobs:
   labeler:
     runs-on: ubuntu-latest
+    permissions:
+      # same as global permissions
+      contents: read
+      # required to update labels
+      issues: write
     steps:
-      - name: Check out the repository
+      -
+        name: Checkout
         uses: actions/checkout@v4
-
-      - name: Run Labeler
-        uses: crazy-max/ghaction-github-labeler@v5.1.0
+      -
+        name: Run Labeler
+        uses: crazy-max/ghaction-github-labeler@v5
         with:
-          skip-delete: true
+          dry-run: ${{ github.event_name == 'pull_request' }}
