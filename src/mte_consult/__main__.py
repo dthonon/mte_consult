@@ -885,7 +885,17 @@ def report(ctx: click.Context) -> None:
         logging.warning(f"Pas de fichier {csv_file}")
 
     commentaires["date"] = commentaires.dateheure.dt.date
-    print(commentaires.groupby(["date", "Opinion_estimée"]).size().unstack().fillna(0))
+    opinions = (
+        commentaires.groupby(["date", "Opinion_estimée"]).size().unstack().fillna(0)
+    )
+    print(opinions)
+    cum_opinions = opinions.cumsum()
+    cum_opinions["Total"] = cum_opinions.sum(axis=1)
+    cum_opinions["Pct Favorable"] = (
+        cum_opinions["Favorable"] / cum_opinions["Total"] * 100
+    )
+    print(cum_opinions)
+    logging.info("Génération de l'évolution des commentaires dans le temps")
     plt.figure(figsize=(1024 / 100, 768 / 100), dpi=100)
     sns.histplot(
         data=commentaires,
@@ -901,6 +911,23 @@ def report(ctx: click.Context) -> None:
     plt.xticks(rotation=90)
     plt.tight_layout()
     plt.savefig(f"plots/{consultation}_comments_over_time.png")
+
+    logging.info("Génération du pourcentage de commentaires favorables dans le temps")
+    plt.figure(figsize=(1024 / 100, 768 / 100), dpi=100)
+    sns.lineplot(
+        data=cum_opinions,
+        x=cum_opinions.index,
+        y="Pct Favorable",
+        marker="o",
+        color="blue",
+    )
+    plt.title("Pourcentage de commentaires favorables dans le temps")
+    plt.xlabel("Date")
+    plt.ylabel("Pourcentage de commentaires favorables (%)")
+    plt.xticks(rotation=90)
+    plt.ylim(0, 100)
+    plt.tight_layout()
+    plt.savefig(f"plots/{consultation}_favorable_percentage_over_time.png")
 
 
 if __name__ == "__main__":
