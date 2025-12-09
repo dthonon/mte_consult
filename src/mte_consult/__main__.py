@@ -344,11 +344,31 @@ def preprocess(ctx: click.Context) -> None:
     # Fusion en une colonne pour traitement du texte
     responses["raw_text"] = responses["titre"] + ". " + responses["texte"]
     responses["raw_text"] = responses["raw_text"].fillna(value="?")
-    # responses = responses.drop(columns=["texte"])
+
+    # Remplissage avec les textes déjà traités
+    preproc_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
+    if preproc_file.is_file():
+        logging.info(f"Lecture des commentaires prétraités depuis {preproc_file}")
+        preproc_responses = pd.read_csv(
+            preproc_file, header=0, sep=";", encoding="utf-8-sig"
+        )
+        responses = responses.merge(
+            preproc_responses[["titre", "texte", "checked_text", "lemma"]],
+            on=["titre", "texte"],
+            how="left",
+        )
+        logging.info(
+            "Mise à jour des commentaires avec les textes prétraités : {len(preproc_responses)}"
+        )
+    else:
+        logging.info("Pas de commentaires prétraités précédents")
+        responses["checked_text"] = None
+        responses["lemma"] = None
+    responses["new_text"] = responses["checked_text"].isnull()
 
     # Nettoyage du texte brut
     logging.info("Nettoyage du texte brut")
-    responses["raw_text"] = responses["raw_text"].str.lower()
+    responses["raw_text"] = responses[responses["new_text"]]["raw_text"].str.lower()
     preproc = preprocessing.pipeline.make_pipeline(
         preprocessing.normalize.bullet_points,
         preprocessing.normalize.hyphenated_words,
@@ -361,26 +381,46 @@ def preprocess(ctx: click.Context) -> None:
         preprocessing.remove.html_tags,
         preprocessing.normalize.whitespace,
     )
-    responses.raw_text = responses["raw_text"].apply(preproc)
-    responses.raw_text = responses.raw_text.str.replace(r"\r", " ", regex=True)
-    responses.raw_text = responses.raw_text.str.replace("+", " plus ")
-    responses.raw_text = responses.raw_text.str.replace("*", " fois ")
-    responses.raw_text = responses.raw_text.str.replace("grd", "grand")
-    responses.raw_text = responses.raw_text.str.replace("qq", "quelque")
-    responses.raw_text = responses.raw_text.str.replace("qlqs", "quelques")
-    responses.raw_text = responses.raw_text.str.replace(".euses", "")
-    responses.raw_text = responses.raw_text.str.replace(".", ". ")
-    responses.raw_text = responses.raw_text.str.replace("(", " (")
-    responses.raw_text = responses.raw_text.str.replace(")", ") ")
-    # responses.raw_text = responses.raw_text.str.replace(r"\s+", " ", regex=True)
-    responses.raw_text = responses.raw_text.str.replace(r"[_%=/°]", " ", regex=True)
-    responses.raw_text = responses.raw_text.str.replace(
+    responses.raw_text = responses[responses["new_text"]]["raw_text"].apply(preproc)
+    responses.raw_text = responses[responses["new_text"]]["raw_text"].str.replace(
+        r"\r", " ", regex=True
+    )
+    responses.raw_text = responses[responses["new_text"]]["raw_text"].str.replace(
+        "+", " plus "
+    )
+    responses.raw_text = responses[responses["new_text"]]["raw_text"].str.replace(
+        "*", " fois "
+    )
+    responses.raw_text = responses[responses["new_text"]]["raw_text"].str.replace(
+        "grd", "grand"
+    )
+    responses.raw_text = responses[responses["new_text"]]["raw_text"].str.replace(
+        "qq", "quelque"
+    )
+    responses.raw_text = responses[responses["new_text"]]["raw_text"].str.replace(
+        "qlqs", "quelques"
+    )
+    responses.raw_text = responses[responses["new_text"]]["raw_text"].str.replace(
+        ".euses", ""
+    )
+    responses.raw_text = responses[responses["new_text"]]["raw_text"].str.replace(
+        ".", ". "
+    )
+    responses.raw_text = responses[responses["new_text"]]["raw_text"].str.replace(
+        "(", " ("
+    )
+    responses.raw_text = responses[responses["new_text"]]["raw_text"].str.replace(
+        ")", ") "
+    )
+    responses.raw_text = responses[responses["new_text"]]["raw_text"].str.replace(
+        r"[_%=/°]", " ", regex=True
+    )
+    responses.raw_text = responses[responses["new_text"]]["raw_text"].str.replace(
         r"\d?\dh\d\d", "HEURE", regex=True
     )
 
     # Suppression du texte étranger
-    lang = responses.raw_text.apply(lambda d: detector.detect_language_of(d))
-    pd.set_option("display.max_colwidth", None)
+    lang = responses.raw_text.apply(lambda d: detector.detect_language_of(str(d)))
     for t in responses.raw_text[lang != Language.FRENCH]:
         logging.info(f"Langue {detector.detect_language_of(t)} : {t}")
         confidence_values = detector.compute_language_confidence_values(t)
@@ -402,8 +442,8 @@ def preprocess(ctx: click.Context) -> None:
     if added_words.is_file():
         logging.info(f"Ajout des mots du fichier {added_words}")
         spell.add_dic(added_words)
-    responses["checked_text"] = responses["raw_text"].apply(
-        lambda d: _spell_correction(tokenizer(d), spell, corrected)
+    responses["checked_text"] = responses[responses["new_text"]]["raw_text"].apply(
+        lambda d: _spell_correction(tokenizer(str(d)), spell, corrected)
     )
 
     logging.info(f"Nombre de mots corrigés : {len(corrected)}")
@@ -413,7 +453,9 @@ def preprocess(ctx: click.Context) -> None:
 
     # Lemmatisation des commentaires
     logging.info("Lemmatisation des commentaires")
-    responses["lemma"] = responses["checked_text"].apply(lambda d: _lemmatize(nlp(d)))
+    responses["lemma"] = responses["checked_text"].apply(
+        lambda d: _lemmatize(nlp(str(d)))
+    )
 
     # Ecriture du fichier des corrections orthographiques
     csv_file = Path(data_dir + "/preprocessed/" + consultation + "_corrected.csv")
@@ -926,6 +968,7 @@ def report(ctx: click.Context) -> None:
     plt.ylabel("Pourcentage de commentaires favorables (%)")
     plt.xticks(rotation=90)
     plt.ylim(0, 100)
+    plt.grid(True)
     plt.tight_layout()
     plt.savefig(f"plots/{consultation}_favorable_percentage_over_time.png")
 
