@@ -115,10 +115,10 @@ def retrieve(ctx: click.Context) -> None:
     logging.info(f"Téléchargement de {consultation}")
     csv_file = Path(data_dir + "/raw/" + consultation + ".csv")
     if csv_file.is_file():
-        logging.debug(f"Lecture des téléchargements depuis {csv_file}")
+        logging.info(f"Lecture des téléchargements depuis {csv_file}")
         responses = pd.read_csv(csv_file, header=0, sep=";", encoding="utf-8-sig")
     else:
-        logging.debug("Pas de téléchargement précédents")
+        logging.info("Pas de téléchargement précédents")
         responses = pd.DataFrame()
     logging.info(f"Nombre de commentaires déjà téléchargés : {len(responses)}")
 
@@ -229,7 +229,6 @@ def retrieve(ctx: click.Context) -> None:
                 logging.info(
                     f"Nb de nouveaux commentaires : {len(responses) - pre_drop}/{len(commentaires)}, total : {len(responses)}/{max_com}"
                 )
-                logging.debug(f"Ecriture dans {csv_file}")
                 responses.to_csv(
                     csv_file, header=True, sep=";", index=False, encoding="utf-8-sig"
                 )
@@ -318,22 +317,31 @@ def preprocess(ctx: click.Context) -> None:
 
     logging.info(f"Prétraitement de {consultation} dans {data_dir}")
     csv_file = Path(data_dir + "/raw/" + consultation + ".csv")
-    logging.debug("Lecture %s", csv_file)
     responses = pd.read_csv(
         csv_file, header=0, sep=";", names=["sujet", "texte"], encoding="utf-8-sig"
     )
+    nb_comments = len(responses)
     logging.info(f"Nombre de commentaires bruts : {len(responses)}")
+
+    # Supression des commentaires déjà prétraités, le cas échéant
+    preproc_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
+    if preproc_file.is_file():
+        logging.info(f"Lecture des commentaires prétraités depuis {preproc_file}")
+        preproc_responses = pd.read_csv(
+            preproc_file,
+            header=0,
+            sep=";",
+            encoding="utf-8-sig",
+            parse_dates=["dateheure"],
+        )
+        responses = responses[~responses.sujet.isin(preproc_responses.sujet)]
+        logging.info(
+            f"Commentaires à prétraiter : {len(responses)} (déjà prétraités : {nb_comments - len(responses)})"
+        )
 
     # Découpe du sujet en éléments
     responses[["titre", "dateheure"]] = responses.sujet.str.extract(
         "(.*), le (.* à .*)", expand=True
-    )
-    responses = responses[["titre", "dateheure", "texte", "sujet"]]
-    locale.setlocale(locale.LC_TIME, "fr_FR.UTF-8")
-    responses["dateheure"] = pd.to_datetime(
-        responses["dateheure"].apply(lambda d: d.replace("1er", "1")),
-        format="%d %B %Y à %Hh%M",
-        errors="coerce",
     )
     # Suppression des ligne dupliquées
     responses = responses.drop_duplicates(subset=["titre", "texte"])
@@ -345,30 +353,27 @@ def preprocess(ctx: click.Context) -> None:
     responses["raw_text"] = responses["titre"] + ". " + responses["texte"]
     responses["raw_text"] = responses["raw_text"].fillna(value="?")
 
-    # Remplissage avec les textes déjà traités
-    preproc_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
-    if preproc_file.is_file():
-        logging.info(f"Lecture des commentaires prétraités depuis {preproc_file}")
-        preproc_responses = pd.read_csv(
-            preproc_file, header=0, sep=";", encoding="utf-8-sig"
-        )
-        responses = responses.merge(
-            preproc_responses[["titre", "texte", "checked_text", "lemma"]],
-            on=["titre", "texte"],
-            how="left",
-        )
-        logging.info(
-            "Mise à jour des commentaires avec les textes prétraités : {len(preproc_responses)}"
-        )
-    else:
-        logging.info("Pas de commentaires prétraités précédents")
-        responses["checked_text"] = None
-        responses["lemma"] = None
-    responses["new_text"] = responses["checked_text"].isnull()
+    # Suppression du texte étranger
+    lang = responses.raw_text.apply(lambda d: detector.detect_language_of(str(d)))
+    for t in responses.raw_text[lang != Language.FRENCH]:
+        logging.info(f"Langue {detector.detect_language_of(t)} : {t}")
+        confidence_values = detector.compute_language_confidence_values(t)
+        for confidence in confidence_values:
+            logging.debug(f"{confidence.language.name}: {confidence.value:.2f}")
+    responses.drop(responses[lang != Language.FRENCH].index, inplace=True)
+    logging.info(f"Commentaires français restant : {len(responses)}")
+
+    locale.setlocale(locale.LC_TIME, "fr_FR.UTF-8")
+    responses["dateheure"] = pd.to_datetime(
+        responses["dateheure"].apply(lambda d: d.replace("1er", "1")),
+        format="%d %B %Y à %Hh%M",
+        errors="coerce",
+    )
 
     # Nettoyage du texte brut
     logging.info("Nettoyage du texte brut")
-    responses["raw_text"] = responses[responses["new_text"]]["raw_text"].str.lower()
+    responses["raw_text"] = responses["raw_text"].str.lower()
+
     preproc = preprocessing.pipeline.make_pipeline(
         preprocessing.normalize.bullet_points,
         preprocessing.normalize.hyphenated_words,
@@ -381,53 +386,21 @@ def preprocess(ctx: click.Context) -> None:
         preprocessing.remove.html_tags,
         preprocessing.normalize.whitespace,
     )
-    responses.raw_text = responses[responses["new_text"]]["raw_text"].apply(preproc)
-    responses.raw_text = responses[responses["new_text"]]["raw_text"].str.replace(
-        r"\r", " ", regex=True
-    )
-    responses.raw_text = responses[responses["new_text"]]["raw_text"].str.replace(
-        "+", " plus "
-    )
-    responses.raw_text = responses[responses["new_text"]]["raw_text"].str.replace(
-        "*", " fois "
-    )
-    responses.raw_text = responses[responses["new_text"]]["raw_text"].str.replace(
-        "grd", "grand"
-    )
-    responses.raw_text = responses[responses["new_text"]]["raw_text"].str.replace(
-        "qq", "quelque"
-    )
-    responses.raw_text = responses[responses["new_text"]]["raw_text"].str.replace(
-        "qlqs", "quelques"
-    )
-    responses.raw_text = responses[responses["new_text"]]["raw_text"].str.replace(
-        ".euses", ""
-    )
-    responses.raw_text = responses[responses["new_text"]]["raw_text"].str.replace(
-        ".", ". "
-    )
-    responses.raw_text = responses[responses["new_text"]]["raw_text"].str.replace(
-        "(", " ("
-    )
-    responses.raw_text = responses[responses["new_text"]]["raw_text"].str.replace(
-        ")", ") "
-    )
-    responses.raw_text = responses[responses["new_text"]]["raw_text"].str.replace(
-        r"[_%=/°]", " ", regex=True
-    )
-    responses.raw_text = responses[responses["new_text"]]["raw_text"].str.replace(
+    responses.raw_text = responses["raw_text"].apply(preproc)
+    responses.raw_text = responses["raw_text"].str.replace(r"\r", " ", regex=True)
+    responses.raw_text = responses["raw_text"].str.replace("+", " plus ")
+    responses.raw_text = responses["raw_text"].str.replace("*", " fois ")
+    responses.raw_text = responses["raw_text"].str.replace("grd", "grand")
+    responses.raw_text = responses["raw_text"].str.replace("qq", "quelque")
+    responses.raw_text = responses["raw_text"].str.replace("qlqs", "quelques")
+    responses.raw_text = responses["raw_text"].str.replace(".euses", "")
+    responses.raw_text = responses["raw_text"].str.replace(".", ". ")
+    responses.raw_text = responses["raw_text"].str.replace("(", " (")
+    responses.raw_text = responses["raw_text"].str.replace(")", ") ")
+    responses.raw_text = responses["raw_text"].str.replace(r"[_%=/°]", " ", regex=True)
+    responses.raw_text = responses["raw_text"].str.replace(
         r"\d?\dh\d\d", "HEURE", regex=True
     )
-
-    # Suppression du texte étranger
-    lang = responses.raw_text.apply(lambda d: detector.detect_language_of(str(d)))
-    for t in responses.raw_text[lang != Language.FRENCH]:
-        logging.info(f"Langue {detector.detect_language_of(t)} : {t}")
-        confidence_values = detector.compute_language_confidence_values(t)
-        for confidence in confidence_values:
-            logging.debug(f"{confidence.language.name}: {confidence.value:.2f}")
-    responses.drop(responses[lang != Language.FRENCH].index, inplace=True)
-    logging.info(f"Commentaires français restant : {len(responses)}")
 
     # Correction orthographique des commentaires
     logging.info(f"Correction orthographique des commentaires de {consultation}")
@@ -442,7 +415,7 @@ def preprocess(ctx: click.Context) -> None:
     if added_words.is_file():
         logging.info(f"Ajout des mots du fichier {added_words}")
         spell.add_dic(added_words)
-    responses["checked_text"] = responses[responses["new_text"]]["raw_text"].apply(
+    responses["checked_text"] = responses["raw_text"].apply(
         lambda d: _spell_correction(tokenizer(str(d)), spell, corrected)
     )
 
@@ -451,20 +424,29 @@ def preprocess(ctx: click.Context) -> None:
         subset=["raw_text", "checked_text"]
     ).sort_values(by="raw_text")
 
+    # Ecriture du fichier des corrections orthographiques
+    csv_file = Path(data_dir + "/preprocessed/" + consultation + "_corrected.csv")
+    corrected.to_csv(
+        csv_file, header=True, sep=";", index=False, encoding="utf-8-sig", mode="a"
+    )
+
     # Lemmatisation des commentaires
     logging.info("Lemmatisation des commentaires")
     responses["lemma"] = responses["checked_text"].apply(
         lambda d: _lemmatize(nlp(str(d)))
     )
 
-    # Ecriture du fichier des corrections orthographiques
-    csv_file = Path(data_dir + "/preprocessed/" + consultation + "_corrected.csv")
-    logging.debug(f"Ecriture dans {csv_file}")
-    corrected.to_csv(csv_file, header=True, sep=";", index=False, encoding="utf-8-sig")
+    # Concatenation des commentaires prétraités
+    logging.info(
+        f"Concaténation des commentaires prétraités : préexistants {len(responses)} et nouveaux {len(preproc_responses)}"
+    )
+    responses = pd.concat([preproc_responses, responses], ignore_index=True)
 
     # Ecriture du fichier résultant
     csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
-    logging.debug(f"Ecriture dans {csv_file}")
+    logging.info(
+        f"Ecriture dans {csv_file} de {len(responses)} commentaires prétraités"
+    )
     responses.sort_values(by="dateheure", ignore_index=True).to_csv(
         csv_file, header=True, sep=";", index=False, encoding="utf-8-sig"
     )
@@ -480,7 +462,6 @@ def cluster(ctx: click.Context) -> None:
     pd.set_option("display.max_colwidth", None)
 
     csv_file = Path(data_dir + "/processed/" + consultation + ".csv")
-    logging.debug(f"Lecture de {csv_file}")
     responses = pd.read_csv(csv_file, header=0, sep=";", encoding="utf-8-sig")
     logging.info(f"Nombre de commentaires prétraités : {len(responses)}")
 
