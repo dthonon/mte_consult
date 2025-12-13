@@ -6,8 +6,9 @@ import random
 import re
 import time
 from collections import Counter
+from datetime import datetime
+from datetime import timedelta
 from functools import partial
-from unidecode import unidecode
 
 # import unicodedata
 from pathlib import Path
@@ -15,30 +16,32 @@ from typing import Any
 
 import click
 import hunspell  # type: ignore
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import requests
+import seaborn as sns
 import spacy
 from bs4 import BeautifulSoup
 from imblearn.under_sampling import RandomUnderSampler
-from lingua import Language, LanguageDetectorBuilder
+from lingua import Language
+from lingua import LanguageDetectorBuilder
 from sklearn import metrics  # type: ignore
-from sklearn.cluster import (
-    DBSCAN,  # type: ignore
-    KMeans,
-)
+from sklearn.cluster import DBSCAN  # type: ignore
+from sklearn.cluster import KMeans
+from sklearn.ensemble import RandomForestClassifier  # type: ignore
 from sklearn.feature_extraction.text import TfidfVectorizer  # type: ignore
 from sklearn.linear_model import LogisticRegression  # type: ignore
-from sklearn.ensemble import RandomForestClassifier  # type: ignore
-from sklearn.naive_bayes import ComplementNB  # type: ignore
-from sklearn.svm import LinearSVC  # type: ignore
-from sklearn.model_selection import RandomizedSearchCV, GridSearchCV  # type: ignore
+from sklearn.model_selection import GridSearchCV  # type: ignore
+from sklearn.model_selection import RandomizedSearchCV
 from sklearn.model_selection import train_test_split  # type: ignore
+from sklearn.naive_bayes import ComplementNB  # type: ignore
 from sklearn.pipeline import Pipeline  # type: ignore
+from sklearn.svm import LinearSVC  # type: ignore
 from spacy.tokenizer import Tokenizer  # type: ignore
 from textacy import preprocessing
-import matplotlib.pyplot as plt
-import seaborn as sns
+from unidecode import unidecode
+
 
 # Constantes
 NB_COMMENTS = 20  # Nombre de commentaires par page
@@ -925,8 +928,100 @@ def report(ctx: click.Context) -> None:
         x="date",
         hue="Opinion_estimée",
         palette={"Favorable": "red", "Défavorable": "green"},
-        multiple="stack",
+        multiple="dodge",
+        shrink=0.8,
         bins=21,
+    )
+    plt.xlim(
+        datetime.strptime("27/11/2025", "%d/%m/%Y"),
+        datetime.strptime("19/12/2025", "%d/%m/%Y"),
+    )
+    plt.ylim(0, 2500)
+    plt.text(
+        x=datetime.strptime("27/11/2025", "%d/%m/%Y"),
+        y=2200,
+        s=" FNSEA/JA",
+        fontsize=12,
+        color="red",
+    )
+    plt.axvline(
+        x=datetime.strptime("27/11/2025", "%d/%m/%Y"),
+        color="red",
+        linestyle="--",
+    )
+
+    plt.text(
+        x=datetime.strptime("28/11/2025", "%d/%m/%Y"),
+        y=2400,
+        s=" ASPAS",
+        fontsize=12,
+        color="green",
+    )
+    plt.axvline(
+        x=datetime.strptime("28/11/2025", "%d/%m/%Y"),
+        color="green",
+        linestyle="--",
+    )
+    plt.text(
+        x=datetime.strptime("01/12/2025", "%d/%m/%Y"),
+        y=2400,
+        s=" FERUS",
+        fontsize=12,
+        color="green",
+    )
+    plt.axvline(
+        x=datetime.strptime("01/12/2025", "%d/%m/%Y"),
+        color="green",
+        linestyle="--",
+    )
+    plt.text(
+        x=datetime.strptime("05/12/2025", "%d/%m/%Y"),
+        y=2400,
+        s=" FNE",
+        fontsize=12,
+        color="green",
+    )
+    plt.axvline(
+        x=datetime.strptime("05/12/2025", "%d/%m/%Y"),
+        color="green",
+        linestyle="--",
+    )
+    plt.text(
+        x=datetime.strptime("07/12/2025", "%d/%m/%Y"),
+        y=2200,
+        s=" Fédé chasse",
+        fontsize=12,
+        color="red",
+    )
+    plt.axvline(
+        x=datetime.strptime("07/12/2025", "%d/%m/%Y"),
+        color="red",
+        linestyle="--",
+    )
+    plt.text(
+        x=datetime.strptime("09/12/2025", "%d/%m/%Y"),
+        y=2400,
+        s=" LPO",
+        fontsize=12,
+        color="green",
+    )
+    plt.axvline(
+        x=datetime.strptime("09/12/2025", "%d/%m/%Y"),
+        color="green",
+        linestyle="--",
+    )
+
+    plt.text(
+        x=datetime.strptime("09/12/2025", "%d/%m/%Y"),
+        y=2300,
+        s=" H&B",
+        fontsize=12,
+        color="green",
+    )
+    plt.axvline(
+        x=datetime.strptime("09/12/2025", "%d/%m/%Y"),
+        color="green",
+        linestyle="--",
     )
     plt.title("Répartition des commentaires dans le temps")
     plt.xlabel("Date")
