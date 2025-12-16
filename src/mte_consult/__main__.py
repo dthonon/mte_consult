@@ -10,6 +10,7 @@ from datetime import datetime
 from datetime import timedelta
 from functools import partial
 
+
 # import unicodedata
 from pathlib import Path
 from typing import Any
@@ -235,7 +236,7 @@ def retrieve(ctx: click.Context) -> None:
                 responses.to_csv(
                     csv_file, header=True, sep=";", index=False, encoding="utf-8-sig"
                 )
-                time.sleep(10)
+                time.sleep(random.uniform(1, 3))  # Pause entre les requêtes
             except (
                 requests.exceptions.ConnectionError,
                 requests.exceptions.ReadTimeout,
@@ -321,13 +322,19 @@ def preprocess(ctx: click.Context) -> None:
     logging.info(f"Prétraitement de {consultation} dans {data_dir}")
     csv_file = Path(data_dir + "/raw/" + consultation + ".csv")
     responses = pd.read_csv(
-        csv_file, header=0, sep=";", names=["sujet", "texte"], encoding="utf-8-sig"
+        csv_file,
+        header=0,
+        sep=";",
+        names=["sujet", "texte"],
+        encoding="utf-8-sig",
+        # nrows=200,
     )
     nb_comments = len(responses)
     logging.info(f"Nombre de commentaires bruts : {len(responses)}")
 
     # Supression des commentaires déjà prétraités, le cas échéant
     preproc_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
+    preproc_responses = None
     if preproc_file.is_file():
         logging.info(f"Lecture des commentaires prétraités depuis {preproc_file}")
         preproc_responses = pd.read_csv(
@@ -353,16 +360,16 @@ def preprocess(ctx: click.Context) -> None:
     )
 
     # Fusion en une colonne pour traitement du texte
-    responses["raw_text"] = responses["titre"] + ". " + responses["texte"]
+    responses["raw_text"] = responses["titre"] + " | " + responses["texte"]
     responses["raw_text"] = responses["raw_text"].fillna(value="?")
 
     # Suppression du texte étranger
-    lang = responses.raw_text.apply(lambda d: detector.detect_language_of(str(d)))
-    for t in responses.raw_text[lang != Language.FRENCH]:
+    lang = responses.texte.apply(lambda d: detector.detect_language_of(str(d)))
+    for t in responses.texte[lang != Language.FRENCH]:
         logging.info(f"Langue {detector.detect_language_of(t)} : {t}")
         confidence_values = detector.compute_language_confidence_values(t)
         for confidence in confidence_values:
-            logging.debug(f"{confidence.language.name}: {confidence.value:.2f}")
+            logging.info(f"{confidence.language.name}: {confidence.value:.2f}")
     responses.drop(responses[lang != Language.FRENCH].index, inplace=True)
     logging.info(f"Commentaires français restant : {len(responses)}")
 
@@ -376,6 +383,9 @@ def preprocess(ctx: click.Context) -> None:
     # Nettoyage du texte brut
     logging.info("Nettoyage du texte brut")
     responses["raw_text"] = responses["raw_text"].str.lower()
+    responses["raw_text"] = responses["raw_text"].apply(
+        lambda d: d.encode("latin-1", "ignore").decode("latin-1")
+    )
 
     preproc = preprocessing.pipeline.make_pipeline(
         preprocessing.normalize.bullet_points,
@@ -440,10 +450,11 @@ def preprocess(ctx: click.Context) -> None:
     )
 
     # Concatenation des commentaires prétraités
-    logging.info(
-        f"Concaténation des commentaires prétraités : préexistants {len(responses)} et nouveaux {len(preproc_responses)}"
-    )
-    responses = pd.concat([preproc_responses, responses], ignore_index=True)
+    if preproc_responses is not None and len(preproc_responses) > 0:
+        logging.info(
+            f"Concaténation des commentaires prétraités : préexistants {len(responses)} et nouveaux {len(preproc_responses)}"
+        )
+        responses = pd.concat([preproc_responses, responses], ignore_index=True)
 
     # Ecriture du fichier résultant
     csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
@@ -453,6 +464,100 @@ def preprocess(ctx: click.Context) -> None:
     responses.sort_values(by="dateheure", ignore_index=True).to_csv(
         csv_file, header=True, sep=";", index=False, encoding="utf-8-sig"
     )
+
+    # Ajout de la colonne opinion
+    if "opinion" not in responses.columns:
+        logging.info("Ajout de la colonne opinion")
+        responses["opinion"] = ""
+
+    # Découpage selon l'avis exprimé
+    # Séparation des commentaires favorables
+    avis_favorable = responses.checked_text.apply(
+        lambda d: "avis favorable" in str(d).lower()[: len("avis favorable")]
+        or "avis positif" in str(d).lower()[: len("avis positif")]
+        or "favorable" in str(d).lower()[: len("favorable")]
+        or "tres favorable" in unidecode(str(d).lower()[: len("tres favorable")])
+        or "avis tres favorable"
+        in unidecode(str(d).lower()[: len("avis tres favorable")])
+        or "avis nombre favorable"
+        in unidecode(str(d).lower()[: len("avis nombre favorable")])
+        or "avis fortement favorable"
+        in unidecode(str(d).lower()[: len("avis fortement favorable")])
+        or "avis tres favorable"
+        in unidecode(str(d).lower()[: len("avis tres favorable")])
+    )
+    logging.info(
+        f"Nombre de commentaires avec avis favorable : {len(responses[avis_favorable])}"
+    )
+    responses.loc[avis_favorable, "opinion"] = "Favorable"
+    # Sauve les commentaires favorables dans un fichier
+    csv_file = Path(data_dir + "/preprocessed/" + consultation + "_avis_favorable.csv")
+    logging.info(f"Sauvegarde des commentaires favorables dans {csv_file}")
+    responses[avis_favorable].to_csv(
+        csv_file, header=True, sep=";", index=False, encoding="utf-8-sig"
+    )
+    # Suppression des commentaires favorables
+    responses = responses[~avis_favorable].reset_index(drop=True)
+    logging.info(
+        f"Nombre de commentaires restants : {len(responses)} (avis défavorable ou inconnus)"
+    )
+
+    # Séparation des commentaires défavorables
+    avis_defavorable = responses.checked_text.apply(
+        lambda d: "non favorable" in str(d).lower()[: len("non favorable")]
+        or "avis négatif" in str(d).lower()[: len("avis négatif")]
+        or "defavorable" in unidecode(str(d).lower()[: len("defavorable")])
+        or "nombre defavorable"
+        in unidecode(str(d).lower()[: len("nombre defavorable")])
+        or "tres defavorable" in unidecode(str(d).lower()[: len("tres defavorable")])
+        or "totalement defavorable"
+        in unidecode(str(d).lower()[: len("totalement defavorable")])
+        or "extremement defavorable"
+        in unidecode(str(d).lower()[: len("extremement defavorable")])
+        or "completement defavorable"
+        in unidecode(str(d).lower()[: len("completement defavorable")])
+        or "contre" in str(d).lower()[: len("contre")]
+        or "avis defavorable" in unidecode(str(d).lower()[: len("avis defavorable")])
+        or "avis tres defavorable"
+        in unidecode(str(d).lower()[: len("avis tres defavorable")])
+        or "avis tres tres defavorable"
+        in unidecode(str(d).lower()[: len("avis tres tres defavorable")])
+        or "avis nombre defavorable"
+        in unidecode(str(d).lower()[: len("avis nombre defavorable")])
+        or "avis completement defavorable"
+        in unidecode(str(d).lower()[: len("avis completement defavorable")])
+        or "avis absolument defavorable"
+        in unidecode(str(d).lower()[: len("avis absolument defavorable")])
+        or "avis extremement defavorable"
+        in unidecode(str(d).lower()[: len("avis extremement defavorable")])
+        or "avis totalement defavorable"
+        in unidecode(str(d).lower()[: len("avis totalement defavorable")])
+    )
+    responses.loc[avis_defavorable, "opinion"] = "Défavorable"
+
+    # Sauve les commentaires défavorables dans un fichier
+    logging.info(
+        f"Nombre de commentaires avec avis défavorable : {len(responses[avis_defavorable])}"
+    )
+    csv_file = Path(
+        data_dir + "/preprocessed/" + consultation + "_avis_defavorable.csv"
+    )
+    logging.info(f"Sauvegarde des commentaires défavorables dans {csv_file}")
+    responses[avis_defavorable].to_csv(
+        csv_file, header=True, sep=";", index=False, encoding="utf-8-sig"
+    )
+    # Suppression des commentaires défavorables
+    responses = responses[~avis_defavorable].reset_index(drop=True)
+    logging.info(f"Nombre de commentaires restants : {len(responses)} (avis inconnus)")
+
+    # Il ne reste que les commentaires sans avis
+    logging.info(f"Nombre de commentaires sans avis : {len(responses)}")
+    responses.opinion = "Inconnu"
+    # Sauve les commentaires sans avis dans un fichier
+    csv_file = Path(data_dir + "/preprocessed/" + consultation + "_avis_inconnu.csv")
+    logging.info(f"Sauvegarde des commentaires sans avis dans {csv_file}")
+    # Ecriture du fichier résultant
+    responses.to_csv(csv_file, header=True, sep=";", index=False, encoding="utf-8-sig")
 
 
 @main.command()
@@ -523,117 +628,6 @@ def cluster(ctx: click.Context) -> None:
         logging.info(
             "Cluster %d, proportion: %d%%", i, cl_size[i] / len(responses) * 100
         )
-
-
-@main.command()
-@click.pass_context
-def pretrain(ctx: click.Context) -> None:
-    """Préparation des fichiers d'entrainement annotés."""
-    consultation = ctx.obj["CONSULTATION"]
-    data_dir = ctx.obj["DATA_DIRECTORY"]
-
-    # Lecture des commentaires
-    csv_file = Path(data_dir + "/preprocessed/" + consultation + ".csv")
-    if csv_file:
-        responses = pd.read_csv(csv_file, header=0, sep=";", encoding="utf-8-sig")
-        logging.info(
-            f"Lecture de {len(responses)} commentaires prétraités depuis {csv_file}"
-        )
-    else:
-        logging.error(f"Fichier {csv_file} non trouvé")
-        return
-
-    # Ajout de la colonne opinion
-    if "opinion" not in responses.columns:
-        logging.info("Ajout de la colonne opinion")
-        responses["opinion"] = ""
-
-    # Découpage selon l'avis exprimé
-    # Séparation des commentaires favorables
-    avis_favorable = responses.checked_text.apply(
-        lambda d: "avis favorable" in str(d).lower()[: len("avis favorable")]
-        or "favorable" in str(d).lower()[: len("favorable")]
-        or "tres favorable" in unidecode(str(d).lower()[: len("tres favorable")])
-        or "avis tres favorable"
-        in unidecode(str(d).lower()[: len("avis tres favorable")])
-        or "avis nombre favorable"
-        in unidecode(str(d).lower()[: len("avis nombre favorable")])
-        or "avis fortement favorable"
-        in unidecode(str(d).lower()[: len("avis fortement favorable")])
-        or "avis tres favorable"
-        in unidecode(str(d).lower()[: len("avis tres favorable")])
-    )
-    logging.info(
-        f"Nombre de commentaires avec avis favorable : {len(responses[avis_favorable])}"
-    )
-    responses.loc[avis_favorable, "opinion"] = "Favorable"
-    # Sauve les commentaires favorables dans un fichier
-    csv_file = Path(data_dir + "/preprocessed/" + consultation + "_avis_favorable.csv")
-    logging.info(f"Sauvegarde des commentaires favorables dans {csv_file}")
-    responses[avis_favorable].to_csv(
-        csv_file, header=True, sep=";", index=False, encoding="utf-8-sig"
-    )
-    # Suppression des commentaires favorables
-    responses = responses[~avis_favorable].reset_index(drop=True)
-    logging.info(
-        f"Nombre de commentaires restants : {len(responses)} (avis défavorable ou inconnus)"
-    )
-
-    # Séparation des commentaires défavorables
-    avis_defavorable = responses.checked_text.apply(
-        lambda d: "non favorable" in str(d).lower()[: len("non favorable")]
-        or "defavorable" in unidecode(str(d).lower()[: len("defavorable")])
-        or "nombre defavorable"
-        in unidecode(str(d).lower()[: len("nombre defavorable")])
-        or "tres defavorable" in unidecode(str(d).lower()[: len("tres defavorable")])
-        or "totalement defavorable"
-        in unidecode(str(d).lower()[: len("totalement defavorable")])
-        or "extremement defavorable"
-        in unidecode(str(d).lower()[: len("extremement defavorable")])
-        or "completement defavorable"
-        in unidecode(str(d).lower()[: len("completement defavorable")])
-        or "contre" in str(d).lower()[: len("contre")]
-        or "avis defavorable" in unidecode(str(d).lower()[: len("avis defavorable")])
-        or "avis tres defavorable"
-        in unidecode(str(d).lower()[: len("avis tres defavorable")])
-        or "avis tres tres defavorable"
-        in unidecode(str(d).lower()[: len("avis tres tres defavorable")])
-        or "avis nombre defavorable"
-        in unidecode(str(d).lower()[: len("avis nombre defavorable")])
-        or "avis completement defavorable"
-        in unidecode(str(d).lower()[: len("avis completement defavorable")])
-        or "avis absolument defavorable"
-        in unidecode(str(d).lower()[: len("avis absolument defavorable")])
-        or "avis extremement defavorable"
-        in unidecode(str(d).lower()[: len("avis extremement defavorable")])
-        or "avis totalement defavorable"
-        in unidecode(str(d).lower()[: len("avis totalement defavorable")])
-    )
-    responses.loc[avis_defavorable, "opinion"] = "Défavorable"
-
-    # Sauve les commentaires défavorables dans un fichier
-    logging.info(
-        f"Nombre de commentaires avec avis défavorable : {len(responses[avis_defavorable])}"
-    )
-    csv_file = Path(
-        data_dir + "/preprocessed/" + consultation + "_avis_defavorable.csv"
-    )
-    logging.info(f"Sauvegarde des commentaires défavorables dans {csv_file}")
-    responses[avis_defavorable].to_csv(
-        csv_file, header=True, sep=";", index=False, encoding="utf-8-sig"
-    )
-    # Suppression des commentaires défavorables
-    responses = responses[~avis_defavorable].reset_index(drop=True)
-    logging.info(f"Nombre de commentaires restants : {len(responses)} (avis inconnus)")
-
-    # Il ne reste que les commentaires sans avis
-    logging.info(f"Nombre de commentaires sans avis : {len(responses)}")
-    responses.opinion = "Inconnu"
-    # Sauve les commentaires sans avis dans un fichier
-    csv_file = Path(data_dir + "/preprocessed/" + consultation + "_avis_inconnu.csv")
-    logging.info(f"Sauvegarde des commentaires sans avis dans {csv_file}")
-    # Ecriture du fichier résultant
-    responses.to_csv(csv_file, header=True, sep=";", index=False, encoding="utf-8-sig")
 
 
 @main.command()
