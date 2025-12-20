@@ -927,8 +927,8 @@ def report(ctx: click.Context) -> None:
         bins=21,
     )
     plt.xlim(
-        datetime.strptime("27/11/2025", "%d/%m/%Y"),
-        datetime.strptime("19/12/2025", "%d/%m/%Y"),
+        datetime.strptime("26/11/2025", "%d/%m/%Y"),
+        datetime.strptime("20/12/2025", "%d/%m/%Y"),
     )
     plt.ylim(0, 2500)
     plt.text(
